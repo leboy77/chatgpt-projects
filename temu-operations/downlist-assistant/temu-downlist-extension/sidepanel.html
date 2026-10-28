@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Temu 下架与主图归档</title>
+    <link rel="stylesheet" href="sidepanel.css" />
+  </head>
+  <body>
+    <header class="app-header">
+      <div>
+        <h1>Temu 下架与主图归档</h1>
+        <p>SPU 批量查询 · 货号分类 · 主图去重</p>
+      </div>
+      <div class="header-actions">
+        <div id="skinPicker" class="skin-picker" aria-label="皮肤选择">
+          <button class="skin-swatch classic" data-theme="classic" title="经典橙"></button>
+          <button class="skin-swatch ocean" data-theme="ocean" title="深海蓝"></button>
+          <button class="skin-swatch forest" data-theme="forest" title="森林绿"></button>
+          <button class="skin-swatch sunset" data-theme="sunset" title="暖阳金"></button>
+        </div>
+        <span class="version">v2.4.1</span>
+      </div>
+    </header>
+
+    <main>
+      <section class="card environment-card">
+        <div class="card-title-row">
+          <h2>运行环境</h2>
+          <button id="checkEnvironmentBtn" class="button secondary small">检查</button>
+        </div>
+        <div class="status-grid">
+          <div class="status-item">
+            <span id="storageDot" class="dot"></span>
+            <span>保存目录</span>
+            <strong id="storageStatus">浏览器下载目录</strong>
+          </div>
+          <div class="status-item">
+            <span id="browserDot" class="dot"></span>
+            <span>运行窗口</span>
+            <strong id="browserStatus">当前窗口</strong>
+          </div>
+          <div class="status-item">
+            <span id="pageDot" class="dot"></span>
+            <span>Temu 页面</span>
+            <strong id="pageStatus">未检查</strong>
+          </div>
+        </div>
+        <div class="output-actions">
+          <button id="chooseOutputDirBtn" class="button secondary small">选择保存文件夹</button>
+          <button id="clearOutputDirBtn" class="button ghost small">改用下载目录</button>
+        </div>
+        <p id="outputDetail" class="hint">
+          未选择文件夹时保存到浏览器下载目录下的“下架图片合集/分类/…”中。
+        </p>
+        <p id="profileDetail" class="hint">默认操作当前已打开的 Temu 页面，不需要填写浏览器 ID。</p>
+        <p class="timeout-note">
+          <strong>超时策略：</strong>查询、图片和下载超时自动跳过；下架提交超时标记为需复核。
+        </p>
+        <details class="advanced-settings">
+          <summary>高级设置：窗口与超时</summary>
+          <label class="field">
+            <span>BitBrowser ID（可选）</span>
+            <input id="browserIdInput" placeholder="留空时使用当前 Temu 页面" spellcheck="false" />
+          </label>
+          <p class="hint">
+            只有需要由插件打开指定比特窗口时才填写。普通 Chrome 用户保持留空即可。
+          </p>
+          <div class="timeout-grid">
+            <label class="field">
+              <span>SPU 查询超时（秒）</span>
+              <input id="queryTimeoutInput" type="number" min="15" max="120" step="1" />
+            </label>
+            <label class="field">
+              <span>图片下载超时（秒）</span>
+              <input id="imageTimeoutInput" type="number" min="10" max="120" step="1" />
+            </label>
+            <label class="field">
+              <span>文件下载超时（秒）</span>
+              <input id="fileDownloadTimeoutInput" type="number" min="15" max="180" step="1" />
+            </label>
+            <label class="field">
+              <span>下架提交超时（秒）</span>
+              <input id="downlistTimeoutInput" type="number" min="60" max="300" step="1" />
+            </label>
+            <label class="field full-span">
+              <span>列表核验超时（秒）</span>
+              <input id="verifyTimeoutInput" type="number" min="15" max="120" step="1" />
+            </label>
+          </div>
+          <button id="resetTimeoutsBtn" class="button ghost small full-width">
+            恢复默认超时
+          </button>
+        </details>
+      </section>
+
+      <section class="card">
+        <h2>任务设置</h2>
+        <div class="mode-group" role="radiogroup" aria-label="处理模式">
+          <label>
+            <input type="radio" name="mode" value="images" checked />
+            <span>
+              <strong>仅保存主图</strong>
+              <small>演练模式，不改变商品状态</small>
+            </span>
+          </label>
+          <label>
+            <input type="radio" name="mode" value="downlist" />
+            <span>
+              <strong>保存主图并下架</strong>
+              <small>最终提交后不可轻易恢复</small>
+            </span>
+          </label>
+        </div>
+        <label class="field">
+          <span>货号分类覆盖（可选）</span>
+          <input id="categoryOverrideInput" placeholder="留空自动提取，例如 CXTX" spellcheck="false" />
+        </label>
+        <p class="hint">
+          默认从页面货号提取分类：CXTX9 → CXTX。背面图目录只创建，不写入或覆盖文件。
+        </p>
+        <label id="authorizeWrap" class="checkbox-row hidden">
+          <input id="authorizeSubmitInput" type="checkbox" />
+          <span>我确认本批允许自动点击最终“确认”并提交下架</span>
+        </label>
+      </section>
+
+      <section class="card">
+        <div class="card-title-row">
+          <h2>Excel 数据</h2>
+          <span id="fileMeta" class="badge">未导入</span>
+        </div>
+        <input id="excelInput" class="file-input" type="file" accept=".xlsx,.xls" />
+        <label for="excelInput" class="button secondary full-width">选择 Excel 文件</label>
+        <p class="hint">表头需包含 A 列“序号”、B 列“SPU ID”、C 列“状态”。</p>
+        <button id="downloadTemplateBtn" class="button ghost full-width">
+          下载下架 SPU 模板
+        </button>
+        <div class="summary-grid">
+          <div><strong id="totalCount">0</strong><span>总数</span></div>
+          <div><strong id="pendingCount">0</strong><span>待处理</span></div>
+          <div><strong id="successCount">0</strong><span>成功</span></div>
+          <div><strong id="errorCount">0</strong><span>异常</span></div>
+        </div>
+      </section>
+
+      <section class="card action-card">
+        <div class="progress-head">
+          <strong id="runState">等待开始</strong>
+          <span id="progressText">0 / 0</span>
+        </div>
+        <div class="progress-track"><div id="progressBar" class="progress-bar"></div></div>
+        <div class="button-row">
+          <button id="startBtn" class="button primary">开始处理</button>
+          <button id="pauseBtn" class="button secondary" disabled>暂停</button>
+          <button id="stopBtn" class="button danger" disabled>停止</button>
+        </div>
+        <button id="retryFailedBtn" class="button warning full-width" disabled>
+          重试失败项
+        </button>
+        <button id="exportBtn" class="button ghost full-width" disabled>导出结果 Excel</button>
+      </section>
+
+      <section class="card table-card">
+        <div class="card-title-row">
+          <h2>任务明细</h2>
+          <button id="clearLogBtn" class="link-button">清空日志</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>行</th>
+                <th>输入 ID</th>
+                <th>分类</th>
+                <th>SKC</th>
+                <th>状态</th>
+              </tr>
+            </thead>
+            <tbody id="rowsBody">
+              <tr class="empty-row"><td colspan="5">导入 Excel 后显示任务</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="card log-card">
+        <h2>运行日志</h2>
+        <pre id="logOutput"></pre>
+      </section>
+    </main>
+
+    <script src="vendor/xlsx.full.min.js"></script>
+    <script src="shared.js"></script>
+    <script src="sidepanel.js"></script>
+  </body>
+</html>

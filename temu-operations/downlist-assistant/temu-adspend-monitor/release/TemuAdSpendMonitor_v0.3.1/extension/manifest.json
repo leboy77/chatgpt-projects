@@ -1,0 +1,47 @@
+{
+  "manifest_version": 3,
+  "name": "Temu 商品推广花费监控",
+  "version": "0.3.1",
+  "description": "在 Temu 商品推广页显示可拖动悬浮窗，监控今日花费并按 SPU 阈值告警或暂停。",
+  "minimum_chrome_version": "114",
+  "permissions": [
+    "storage",
+    "scripting",
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://ads.temu.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "Temu 商品推广花费监控"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://ads.temu.com/ad-list.html*"
+      ],
+      "js": [
+        "core.js",
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "page-bridge.js",
+        "sidepanel.html",
+        "sidepanel.css",
+        "sidepanel.js",
+        "core.js"
+      ],
+      "matches": [
+        "https://ads.temu.com/*"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Temu 商品推广花费监控</title>
+    <link rel="stylesheet" href="sidepanel.css" />
+  </head>
+  <body>
+    <header class="app-header">
+      <div>
+        <p class="eyebrow">TEMU 商品推广</p>
+        <h1>花费监控</h1>
+      </div>
+      <span id="connectionBadge" class="badge badge-neutral">检测页面</span>
+    </header>
+
+    <main>
+      <section class="notice">
+        <strong>默认安全模式只告警，不执行暂停。</strong>
+        自动暂停开启前，请先确认测试 SPU 和阈值。数据更新速度取决于 Temu 平台。
+      </section>
+
+      <section class="card">
+        <div class="section-title">
+          <h2>监控设置</h2>
+          <span id="runState" class="badge badge-neutral">未运行</span>
+        </div>
+        <div class="form-grid">
+          <label>
+            <span>刷新间隔（秒）</span>
+            <input id="intervalSec" type="number" min="30" max="3600" step="1" />
+          </label>
+          <label>
+            <span>默认今日花费上限（元）</span>
+            <input id="defaultSpendLimit" type="number" min="0" step="0.01" />
+          </label>
+          <label>
+            <span>默认每单花费上限（元）</span>
+            <input id="defaultCostLimit" type="number" min="0" step="0.01" />
+          </label>
+          <label>
+            <span>运行模式</span>
+            <select id="mode">
+              <option value="observe">观察模式（只告警）</option>
+              <option value="armed">自动暂停模式</option>
+            </select>
+          </label>
+        </div>
+        <label class="check-row">
+          <input id="pauseAuthorized" type="checkbox" />
+          <span>我已确认测试 SPU 和阈值，允许达到阈值后自动暂停</span>
+        </label>
+        <div class="button-row">
+          <button id="saveSettings" class="primary">保存设置</button>
+          <button id="startMonitor">开始监控</button>
+          <button id="refreshNow">立即读取</button>
+          <button id="stopMonitor" class="quiet">停止</button>
+        </div>
+        <p id="settingsMessage" class="message" aria-live="polite"></p>
+      </section>
+
+      <section class="metrics">
+        <article>
+          <span>推广记录</span>
+          <strong id="metricRecords">—</strong>
+        </article>
+        <article>
+          <span>今日总花费</span>
+          <strong id="metricSpend">—</strong>
+        </article>
+        <article>
+          <span>命中 SPU</span>
+          <strong id="metricHits">—</strong>
+        </article>
+        <article>
+          <span>读取耗时</span>
+          <strong id="metricLatency">—</strong>
+        </article>
+      </section>
+
+      <section class="card">
+        <div class="section-title">
+          <h2>SPU 花费</h2>
+          <span id="lastCheck" class="muted">尚未读取</span>
+        </div>
+        <p id="runtimeError" class="error-box hidden"></p>
+        <div id="spuList" class="spu-list">
+          <p class="empty">打开 Temu 商品推广页后点击“立即读取”。</p>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="section-title">
+          <h2>最近审计</h2>
+          <span class="muted">最多保留 300 条</span>
+        </div>
+        <div id="auditList" class="audit-list">
+          <p class="empty">暂无触发记录。</p>
+        </div>
+      </section>
+    </main>
+
+    <template id="spuCardTemplate">
+      <article class="spu-card">
+        <div class="spu-head">
+          <div class="spu-info">
+            <strong class="spu-title"></strong>
+            <span class="spu-id"></span>
+          </div>
+          <span class="status-pill"></span>
+        </div>
+        <div class="spu-stats">
+          <div><span>今日花费</span><strong class="spend"></strong></div>
+          <div><span>订单数</span><strong class="orders"></strong></div>
+          <div><span>每单花费</span><strong class="cpa"></strong></div>
+        </div>
+        <p class="hit-message hidden"></p>
+        <div class="rule-grid">
+          <label>
+            <span>专属花费上限</span>
+            <input class="rule-spend" type="number" min="0" step="0.01" />
+          </label>
+          <label>
+            <span>专属每单上限</span>
+            <input class="rule-cost" type="number" min="0" step="0.01" />
+          </label>
+        </div>
+        <div class="button-row compact">
+          <button class="save-rule">保存专属规则</button>
+          <button class="reset-rule quiet">恢复默认</button>
+        </div>
+      </article>
+    </template>
+
+    <script src="core.js"></script>
+    <script src="sidepanel.js"></script>
+  </body>
+</html>

@@ -1,0 +1,35 @@
+{
+  "manifest_version": 3,
+  "name": "Temu 全球核价助手",
+  "version": "0.6.1",
+  "description": "导入最多 1000 个 SKC，按 50 条分批比较 Temu 全球站点价格；平台价高时直接接受，低时向平台还价。",
+  "permissions": [
+    "storage",
+    "sidePanel",
+    "downloads",
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://agentseller.temu.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "打开 Temu 全球核价助手"
+  },
+  "side_panel": {
+    "default_path": "sidepanel/sidepanel.html"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://agentseller.temu.com/*"
+      ],
+      "js": [
+        "content/content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}

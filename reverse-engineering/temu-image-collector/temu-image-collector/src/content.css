@@ -1,0 +1,248 @@
+.tec-card-host {
+  position: relative !important;
+}
+
+.tec-select-button {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid rgba(0, 0, 0, 0.16);
+  border-radius: 999px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.16);
+  color: #222;
+  cursor: pointer;
+  display: inline-flex;
+  font: 600 12px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+  gap: 5px;
+  left: 7px;
+  min-height: 25px;
+  padding: 0 10px;
+  position: absolute;
+  top: 7px;
+  user-select: none;
+  z-index: 2147483000;
+}
+
+.tec-select-button::before {
+  border: 1.5px solid #777;
+  border-radius: 4px;
+  box-sizing: border-box;
+  content: "";
+  display: inline-block;
+  height: 12px;
+  width: 12px;
+}
+
+.tec-select-button:hover {
+  border-color: #fb7701;
+  color: #d65f00;
+}
+
+.tec-select-button.tec-selected {
+  background: #fb7701;
+  border-color: #fb7701;
+  color: #fff;
+}
+
+.tec-select-button.tec-selected::before {
+  background:
+    linear-gradient(135deg, transparent 44%, #fff 45%, #fff 57%, transparent 58%)
+      2px 5px / 5px 3px no-repeat,
+    linear-gradient(45deg, transparent 46%, #fff 47%, #fff 59%, transparent 60%)
+      6px 4px / 7px 4px no-repeat;
+  border-color: #fff;
+}
+
+#tec-panel {
+  background: linear-gradient(180deg, #fff 0%, #fffaf6 100%);
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 12px;
+  bottom: 18px;
+  box-shadow: 0 10px 34px rgba(20, 20, 20, 0.24);
+  box-sizing: border-box;
+  color: #222;
+  font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+  min-width: 330px;
+  overflow: hidden;
+  position: fixed;
+  right: 18px;
+  width: 630px;
+  z-index: 2147483647;
+}
+
+#tec-panel.tec-minimized .tec-panel-body {
+  display: none;
+}
+
+.tec-panel-head {
+  align-items: center;
+  background: #212121;
+  color: #fff;
+  display: flex;
+  justify-content: space-between;
+  min-height: 40px;
+  padding: 0 12px;
+}
+
+.tec-panel-title {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+}
+
+.tec-icon-button {
+  background: transparent;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  padding: 4px 6px;
+}
+
+.tec-panel-body {
+  padding: 12px;
+}
+
+.tec-panel-row {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tec-panel-row + .tec-panel-row {
+  margin-top: 9px;
+}
+
+.tec-checkbox {
+  align-items: center;
+  color: #444;
+  cursor: pointer;
+  display: inline-flex;
+  gap: 5px;
+  user-select: none;
+}
+
+.tec-checkbox input {
+  accent-color: #fb7701;
+  height: 15px;
+  margin: 0;
+  width: 15px;
+}
+
+.tec-summary {
+  color: #666;
+  flex: 1 1 auto;
+  min-width: 190px;
+}
+
+.tec-save-path {
+  color: #666;
+  flex: 1 1 190px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tec-save-path strong {
+  color: #333;
+  font-weight: 600;
+}
+
+.tec-strong {
+  color: #d65f00;
+  font-weight: 700;
+}
+
+#tec-mode {
+  background: #fff;
+  border: 1px solid #d6d6d6;
+  border-radius: 7px;
+  color: #222;
+  font: inherit;
+  min-height: 34px;
+  outline: none;
+  padding: 0 8px;
+}
+
+.tec-action {
+  background: #fff;
+  border: 1px solid #d6d6d6;
+  border-radius: 7px;
+  color: #333;
+  cursor: pointer;
+  font: 600 13px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+  min-height: 34px;
+  padding: 0 12px;
+}
+
+.tec-action:hover:not(:disabled) {
+  border-color: #fb7701;
+  color: #d65f00;
+}
+
+.tec-action.primary {
+  background: #fb7701;
+  border-color: #fb7701;
+  color: #fff;
+  min-width: 104px;
+}
+
+.tec-action.primary:hover:not(:disabled) {
+  background: #e86d00;
+  color: #fff;
+}
+
+.tec-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+.tec-progress-wrap {
+  background: #eee;
+  border-radius: 999px;
+  height: 7px;
+  margin-top: 10px;
+  overflow: hidden;
+}
+
+#tec-progress {
+  background: linear-gradient(90deg, #fb7701, #ffad42);
+  height: 100%;
+  transition: width 180ms ease;
+  width: 0;
+}
+
+#tec-log {
+  background: #f6f6f6;
+  border: 1px solid #e5e5e5;
+  border-radius: 7px;
+  box-sizing: border-box;
+  color: #444;
+  display: none;
+  font: 12px/1.45 Consolas, "Microsoft YaHei", monospace;
+  margin: 10px 0 0;
+  max-height: 150px;
+  overflow: auto;
+  padding: 8px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+#tec-log.tec-visible {
+  display: block;
+}
+
+.tec-note {
+  color: #8a6a48;
+  font-size: 12px;
+  margin-top: 8px;
+}
+
+@media (max-width: 760px) {
+  #tec-panel {
+    bottom: 10px;
+    left: 10px;
+    right: 10px;
+    width: auto;
+  }
+}

@@ -1,0 +1,33 @@
+# Dependency and runtime caches
+node_modules/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+
+# Local browser profiles and temporary test runs
+.tmp-*/
+test-artifacts/
+_test_artifacts/
+probes/shots/
+save-test/
+test-downloads/
+
+# Generated or private runtime data
+outputs/
+tabs_backup.json
+*.log
+
+# Local secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets.json
+credentials.json
+
+# Operating-system files
+.DS_Store
+Thumbs.db
+desktop.ini
