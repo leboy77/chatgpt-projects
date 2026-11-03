@@ -52,6 +52,39 @@
   border-color: #fff;
 }
 
+.tec-row-toggle-button {
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid rgba(0, 0, 0, 0.18);
+  border-radius: 999px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.16);
+  color: #333;
+  cursor: pointer;
+  font: 600 12px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+  min-height: 25px;
+  padding: 0 10px;
+  position: absolute;
+  right: 7px;
+  top: 7px;
+  user-select: none;
+  z-index: 2147483001;
+}
+
+.tec-row-toggle-button:hover:not(:disabled) {
+  border-color: #fb7701;
+  color: #d65f00;
+}
+
+.tec-row-toggle-button.tec-row-has-selected {
+  background: #fff1e4;
+  border-color: #fb7701;
+  color: #c95a00;
+}
+
+.tec-row-toggle-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
 #tec-panel {
   background: linear-gradient(180deg, #fff 0%, #fffaf6 100%);
   border: 1px solid rgba(0, 0, 0, 0.12);
@@ -77,10 +110,13 @@
   align-items: center;
   background: #212121;
   color: #fff;
+  cursor: move;
   display: flex;
   justify-content: space-between;
   min-height: 40px;
   padding: 0 12px;
+  touch-action: none;
+  user-select: none;
 }
 
 .tec-panel-title {

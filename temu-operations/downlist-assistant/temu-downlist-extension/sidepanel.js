@@ -42,6 +42,7 @@
     lookupType: "SPU",
     rows: [],
     mode: "images",
+    useCarouselFirst: false,
     override: "",
     running: false,
     paused: false,
@@ -71,6 +72,13 @@
     profileDetail: document.getElementById("profileDetail"),
     authorizeWrap: document.getElementById("authorizeWrap"),
     authorizeSubmitInput: document.getElementById("authorizeSubmitInput"),
+    deleteAuthorizeWrap: document.getElementById("deleteAuthorizeWrap"),
+    deleteAuthorizeInput: document.getElementById("deleteAuthorizeInput"),
+    multiColorInput: document.getElementById("multiColorInput"),
+    directSpuInput: document.getElementById("directSpuInput"),
+    applyDirectInputBtn: document.getElementById("applyDirectInputBtn"),
+    clearDirectInputBtn: document.getElementById("clearDirectInputBtn"),
+    directInputMeta: document.getElementById("directInputMeta"),
     excelInput: document.getElementById("excelInput"),
     downloadTemplateBtn: document.getElementById("downloadTemplateBtn"),
     fileMeta: document.getElementById("fileMeta"),
@@ -471,6 +479,7 @@
 
   function setButtons() {
     const retryableCount = state.rows.filter(isRetryableFailure).length;
+    const directParsed = TemuCommon.parseSpuIdText(elements.directSpuInput.value);
     elements.startBtn.disabled = state.running || !state.rows.length;
     elements.pauseBtn.disabled = !state.running;
     elements.pauseBtn.textContent = state.paused ? "继续" : "暂停";
@@ -480,12 +489,16 @@
       ? `重试失败项（${retryableCount}）`
       : "重试失败项";
     elements.exportBtn.disabled = !state.originalAoa.length || state.running;
+    elements.directSpuInput.disabled = state.running;
+    elements.applyDirectInputBtn.disabled = state.running || !directParsed.values.length;
+    elements.clearDirectInputBtn.disabled =
+      state.running || !normalizeText(elements.directSpuInput.value);
   }
 
   function isRetryableFailure(row) {
     if (!row || row.skip) return false;
     if (/需复核/.test(row.status || "")) return false;
-    return /未查到|超时|处理失败|下架失败/.test(row.status || "");
+    return /未查到|超时|处理失败|下架失败|删除失败/.test(row.status || "");
   }
 
   function isTimeoutError(error) {
@@ -493,12 +506,16 @@
   }
 
   function withTimeout(promise, timeoutMs, message) {
+    const safeTimeoutMs =
+      Number.isFinite(Number(timeoutMs)) && Number(timeoutMs) > 0
+        ? Number(timeoutMs)
+        : 1000;
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         const error = new Error(message || "操作超时");
         error.code = "OPERATION_TIMEOUT";
         reject(error);
-      }, timeoutMs);
+      }, safeTimeoutMs);
       Promise.resolve(promise).then(
         (value) => {
           clearTimeout(timer);
@@ -512,17 +529,11 @@
     });
   }
 
-  function clampTimeout(value, min, max, fallback) {
-    const number = Number(value);
-    if (!Number.isFinite(number)) return fallback;
-    return Math.max(min, Math.min(max, Math.round(number)));
-  }
-
   function normalizeTimeoutSettings(value) {
     const source = value && typeof value === "object" ? value : {};
     const normalized = { ...DEFAULT_TIMEOUTS };
     for (const field of TIMEOUT_FIELDS) {
-      normalized[field.key] = clampTimeout(
+      normalized[field.key] = TemuCommon.clampTimeoutMs(
         source[field.key],
         field.min,
         field.max,
@@ -544,10 +555,10 @@
     const next = { ...state.timeouts };
     for (const field of TIMEOUT_FIELDS) {
       next[field.key] =
-        clampTimeout(
+        TemuCommon.clampTimeoutMs(
           Number(elements[field.input].value) * 1000,
-          field.min * 1000,
-          field.max * 1000,
+          field.min,
+          field.max,
           DEFAULT_TIMEOUTS[field.key]
         );
     }
@@ -575,7 +586,7 @@
   function refreshCounts() {
     const total = state.rows.length;
     const success = state.rows.filter((row) =>
-      /主图成功|下架成功|已完成/.test(row.status)
+      /主图成功|下架成功|删除成功|已完成/.test(row.status)
     ).length;
     const errors = state.rows.filter((row) =>
       /失败|异常|未查到|需复核|超时/.test(row.status)
@@ -600,7 +611,7 @@
       tr.className = "empty-row";
       const td = document.createElement("td");
       td.colSpan = 5;
-      td.textContent = "导入 Excel 后显示任务";
+      td.textContent = "直接填写 SPU 或导入 Excel 后显示任务";
       tr.appendChild(td);
       elements.rowsBody.appendChild(tr);
       refreshProgress();
@@ -641,6 +652,90 @@
     return headers.findIndex((header) => aliases.includes(normalizeHeader(header)));
   }
 
+  function commitTaskData({
+    workbook,
+    aoa,
+    fileName,
+    sheetName,
+    columns,
+    lookupType,
+    rows,
+    badgeText,
+    logMessage
+  }) {
+    Object.assign(state, {
+      workbook,
+      originalAoa: aoa,
+      fileName,
+      sheetName,
+      columns,
+      lookupType,
+      rows,
+      progressCurrent: 0,
+      progressTotal: rows.filter((row) => !row.skip).length,
+      lastResultPath: ""
+    });
+    elements.fileMeta.textContent = badgeText;
+    setRunState("已添加");
+    renderRows();
+    setButtons();
+    log(logMessage);
+  }
+
+  function updateDirectInputMeta() {
+    const parsed = TemuCommon.parseSpuIdText(elements.directSpuInput.value);
+    if (!normalizeText(elements.directSpuInput.value)) {
+      elements.directInputMeta.textContent =
+        "支持粘贴整列 SPU ID，将自动去重并忽略序号等非 SPU 数字。";
+    } else if (!parsed.values.length) {
+      elements.directInputMeta.textContent =
+        "未识别到有效的 8-20 位 SPU ID。";
+    } else {
+      const notes = [`已识别 ${parsed.values.length} 个 SPU`];
+      if (parsed.duplicates) notes.push(`去重 ${parsed.duplicates} 个`);
+      if (parsed.ignored) notes.push(`忽略 ${parsed.ignored} 个非 SPU 数字`);
+      elements.directInputMeta.textContent = notes.join("，");
+    }
+    setButtons();
+  }
+
+  function applyDirectSpuInput() {
+    if (state.running) throw new Error("任务运行中，不能替换 SPU 列表");
+    const parsed = TemuCommon.parseSpuIdText(elements.directSpuInput.value);
+    if (!parsed.values.length) {
+      throw new Error("请先填写至少一个有效的 8-20 位 SPU ID");
+    }
+    if (
+      state.rows.length &&
+      !window.confirm("直接填写会替换当前任务列表，是否继续？")
+    ) {
+      return;
+    }
+
+    const aoa = [
+      ["序号", "SPU ID", "状态"],
+      ...parsed.values.map((id, index) => [index + 1, id, ""])
+    ];
+    const workbook = XLSX.utils.book_new();
+    const worksheet = XLSX.utils.aoa_to_sheet(aoa);
+    XLSX.utils.book_append_sheet(workbook, worksheet, "下架清单");
+    const columns = { serial: 0, input: 1, status: 2 };
+    const rows = TemuCommon.buildTaskRowsFromAoa(aoa, columns, "SPU");
+    const suffix = parsed.duplicates ? `，已去重 ${parsed.duplicates} 个` : "";
+
+    commitTaskData({
+      workbook,
+      aoa,
+      fileName: "直接输入",
+      sheetName: "下架清单",
+      columns,
+      lookupType: "SPU",
+      rows,
+      badgeText: `直接输入 ${rows.length} 条`,
+      logMessage: `已从文本框添加 ${rows.length} 个 SPU${suffix}`
+    });
+  }
+
   async function importWorkbook(file) {
     if (!file) return;
     const buffer = await file.arrayBuffer();
@@ -676,70 +771,25 @@
       throw new Error("未找到“SPU ID”列，请使用 A 序号、B SPU ID、C 状态的格式");
     }
 
-    const seenInput = new Set();
-    const rows = [];
-    for (let rowIndex = 1; rowIndex < aoa.length; rowIndex += 1) {
-      const sourceRow = aoa[rowIndex] || [];
-      const inputId = normalizeText(sourceRow[inputColumn]).replace(/\.0$/, "");
-      const serial = normalizeText(sourceRow[serialColumn >= 0 ? serialColumn : 0]);
-      const inputStatus = normalizeText(sourceRow[statusColumn >= 0 ? statusColumn : 2]);
-      // 模板会预填序号；未填写 SPU/SKC 的预留行不能作为异常任务导入。
-      if (!inputId) continue;
+    const columns = {
+      serial: serialColumn >= 0 ? serialColumn : 0,
+      input: inputColumn,
+      status: statusColumn >= 0 ? statusColumn : 2
+    };
+    const rows = TemuCommon.buildTaskRowsFromAoa(aoa, columns, lookupType);
+    const validCount = rows.filter((row) => !row.skip).length;
 
-      const row = {
-        originalRowIndex: rowIndex,
-        sourceRowIndex: rowIndex + 1,
-        serial,
-        inputId,
-        lookupType,
-        inputStatus,
-        status: inputStatus || "待处理",
-        skip: false,
-        active: false,
-        spu: lookupType === "SPU" ? inputId : "",
-        skc: lookupType === "SKC" ? inputId : "",
-        goodsCode: "",
-        category: "",
-        imagePath: "",
-        imageReused: false,
-        downlistOutcome: "",
-        verified: false,
-        error: ""
-      };
-
-      if (!/^\d{8,20}$/.test(inputId)) {
-        row.skip = true;
-        row.status = `${lookupType}格式异常`;
-        row.error = `无效 ${lookupType}：${inputId || "空"}`;
-      } else if (seenInput.has(inputId)) {
-        row.skip = true;
-        row.status = "重复，已跳过";
-      } else if (statusIsSuccessful(inputStatus)) {
-        row.skip = true;
-        row.status = `表内已成功，跳过`;
-      } else {
-        seenInput.add(inputId);
-      }
-      rows.push(row);
-    }
-
-    Object.assign(state, {
+    commitTaskData({
       workbook,
-      originalAoa: aoa,
+      aoa,
       fileName: file.name,
       sheetName,
-      columns: { serial: serialColumn, input: inputColumn, status: statusColumn },
+      columns,
       lookupType,
       rows,
-      progressCurrent: 0,
-      progressTotal: rows.filter((row) => !row.skip).length,
-      lastResultPath: ""
+      badgeText: file.name,
+      logMessage: `已导入 ${file.name}，有效任务 ${validCount} 条`
     });
-    elements.fileMeta.textContent = file.name;
-    setRunState("已导入");
-    renderRows();
-    setButtons();
-    log(`已导入 ${file.name}，有效任务 ${state.progressTotal} 条`);
   }
 
   async function openProfile() {
@@ -794,6 +844,7 @@
       const timeoutKey = {
         contentPing: "contentPing",
         searchAndExtract: "spuQuery",
+        deletePendingSpu: "downlist",
         downlistSkc: "downlist",
         verifyDownlisted: "verify"
       }[message?.type];
@@ -894,11 +945,13 @@
     row.phase = "query";
     updateRow(row, { status: "查询中", error: "" });
     await ensurePausePoint();
+    await getOrCreateWorkTab(IMAGE_TASK_URL);
 
     const response = await sendToTab(state.workTabId, {
       type: "searchAndExtract",
       queryType: row.lookupType,
-      id: row.inputId
+      id: row.inputId,
+      preferCarouselFirst: state.useCarouselFirst
     });
     const data = response.data;
     if (!data.found) {
@@ -920,6 +973,7 @@
       skc: data.skc,
       goodsCode: data.goodsCode,
       category,
+      imageSource: data.imageSource,
       status: "保存主图"
     });
     row.phase = "image";
@@ -932,6 +986,32 @@
       imageReused: Boolean(saved.reused),
       status: saved.reused ? "主图已存在，复用" : "主图成功"
     });
+
+    if (state.mode === "delete") {
+      updateRow(row, { status: "删除待发布商品" });
+      row.phase = "delete";
+      await getOrCreateWorkTab(PRODUCT_LIST_URL);
+      const deleteResponse = await sendToTab(state.workTabId, {
+        type: "deletePendingSpu",
+        spu: data.spu
+      });
+      const deleteResult = deleteResponse.data;
+      if (deleteResult?.outcome !== "success") {
+        throw new Error(
+          deleteResult?.message ||
+          `未删除待发布商品：SPU ${data.spu}`
+        );
+      }
+      updateRow(row, {
+        active: false,
+        status: `删除成功（${deleteResult.deletedCount} 个 SKC）`,
+        downlistOutcome: "success",
+        verified: true,
+        error: ""
+      });
+      await getOrCreateWorkTab(IMAGE_TASK_URL);
+      return;
+    }
 
     if (state.mode !== "downlist") {
       updateRow(row, { active: false, status: "演练完成（主图成功）" });
@@ -1043,8 +1123,9 @@
     headers[extraStart + 4] = "货号分类";
     headers[extraStart + 5] = "页面货号";
     headers[extraStart + 6] = "主图文件";
-    headers[extraStart + 7] = "下架结果";
+    headers[extraStart + 7] = "下架/删除结果";
     headers[extraStart + 8] = "错误信息";
+    headers[extraStart + 9] = "图片来源";
     aoa[0] = headers;
 
     for (const row of state.rows) {
@@ -1060,6 +1141,7 @@
       target[extraStart + 6] = row.imagePath;
       target[extraStart + 7] = row.downlistOutcome;
       target[extraStart + 8] = row.error;
+      target[extraStart + 9] = row.imageSource;
       aoa[row.originalRowIndex] = target;
     }
 
@@ -1074,7 +1156,7 @@
   }
 
   async function exportResults() {
-    if (!state.originalAoa.length) throw new Error("尚未导入 Excel");
+    if (!state.originalAoa.length) throw new Error("尚未添加任务数据");
     const bytes = buildResultWorkbook();
     const filename = `处理结果_${formatDateTime()}.xlsx`;
     const blob = new Blob([bytes], {
@@ -1115,6 +1197,7 @@
   async function startBatch() {
     if (state.running || !state.rows.length) return;
     state.override = normalizeText(elements.categoryOverrideInput.value).toUpperCase();
+    state.useCarouselFirst = elements.multiColorInput.checked;
 
     if (state.mode === "downlist") {
       if (!elements.authorizeSubmitInput.checked) {
@@ -1122,6 +1205,16 @@
       }
       const confirmed = window.confirm(
         `本批将真实提交下架，最终确认后商品可能无法恢复。\n\n有效任务：${state.progressTotal} 条\n保存位置：${elements.storageStatus.textContent}\n\n确定继续？`
+      );
+      if (!confirmed) return;
+    }
+
+    if (state.mode === "delete") {
+      if (!elements.deleteAuthorizeInput.checked) {
+        throw new Error("请勾选“允许删除待发布商品”后再开始");
+      }
+      const confirmed = window.confirm(
+        `本批会先保存图片，再删除商品列表中“未发布到站点”的待发布商品及其全部 SKC。\n\n有效任务：${state.progressTotal} 条\n保存位置：${elements.storageStatus.textContent}\n\n删除后可在“已删除”列表尝试恢复。确定继续？`
       );
       if (!confirmed) return;
     }
@@ -1177,7 +1270,7 @@
           updateRow(row, {
             active: false,
             status: timedOut
-              ? phase === "downlist" || phase === "verify"
+              ? ["downlist", "delete", "verify"].includes(phase)
                 ? "超时已跳过（需复核）"
                 : "超时已跳过"
               : "处理失败",
@@ -1269,6 +1362,7 @@
         if (!radio.checked) return;
         state.mode = radio.value;
         elements.authorizeWrap.classList.toggle("hidden", state.mode !== "downlist");
+        elements.deleteAuthorizeWrap.classList.toggle("hidden", state.mode !== "delete");
       });
     });
 
@@ -1320,6 +1414,29 @@
         elements.fileMeta.textContent = "导入失败";
         log(error.message, "error");
       }
+    });
+    elements.directSpuInput.addEventListener("input", updateDirectInputMeta);
+    elements.directSpuInput.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+        event.preventDefault();
+        try {
+          applyDirectSpuInput();
+        } catch (error) {
+          log(error.message, "error");
+        }
+      }
+    });
+    elements.applyDirectInputBtn.addEventListener("click", () => {
+      try {
+        applyDirectSpuInput();
+      } catch (error) {
+        log(error.message, "error");
+      }
+    });
+    elements.clearDirectInputBtn.addEventListener("click", () => {
+      elements.directSpuInput.value = "";
+      updateDirectInputMeta();
+      elements.directSpuInput.focus();
     });
     elements.downloadTemplateBtn.addEventListener("click", () =>
       downloadSpuTemplate().catch((error) => log(error.message, "error"))

@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Visual Forge for Muse · 设置</title>
+    <link rel="stylesheet" href="options.css">
+  </head>
+  <body>
+    <main>
+      <header>
+        <span class="mark">VF</span>
+        <div>
+          <p>VISUAL FORGE / CONNECTOR</p>
+          <h1>Muse 对话框连接设置</h1>
+        </div>
+      </header>
+
+      <section class="card">
+        <h2>图片模型配置</h2>
+        <p>产品文生图和裂变直接由扩展调用。演示模式不消耗外部额度。</p>
+        <label for="modelProvider">运行模式</label>
+        <select id="modelProvider">
+          <option value="mock">演示模式（本地占位图）</option>
+          <option value="openai">OpenAI 兼容图片接口</option>
+        </select>
+        <label for="modelBaseUrl">API 地址</label>
+        <input id="modelBaseUrl" type="url" value="https://api.openai.com/v1">
+        <label for="modelName">模型名称</label>
+        <input id="modelName" type="text" value="gpt-image-1">
+        <label for="apiKey">API Key</label>
+        <input id="apiKey" type="password" autocomplete="off" placeholder="sk-...">
+        <div class="actions">
+          <button id="save" class="primary" type="button">保存并授权模型域名</button>
+          <button id="test" type="button">检查配置</button>
+        </div>
+        <div id="status" class="status" role="status"></div>
+      </section>
+
+      <section class="card">
+        <h2>对话指令</h2>
+        <p>在 Muse 输入框键入以下指令并按 Enter。扩展只拦截以 <code>/vf</code> 开头的内容。</p>
+        <dl>
+          <dt>同一商品多个指定色号</dt>
+          <dd><code>/vf product-colors #1D2A44,#8C1A2D --names 藏青,酒红</code></dd>
+          <dt>一个 Logo 多个颜色</dt>
+          <dd><code>/vf colors #111111,#FFFFFF</code></dd>
+          <dt>多个 Logo 统一颜色</dt>
+          <dd><code>/vf color #D4684F</code></dd>
+          <dt>产品文生图与裂变</dt>
+          <dd><code>/vf generate 极简陶瓷杯 --count 4 --size 1024x1024</code></dd>
+        </dl>
+        <p class="note">Logo 指令需要先在浏览器右侧的 Visual Forge 侧栏中选择素材。产品裂变不需要上传素材。</p>
+      </section>
+
+      <section class="card">
+        <h2>边界</h2>
+        <ul>
+          <li>扩展不读取 Muse 的历史聊天或普通对话内容。</li>
+          <li>商品多色模式只读取本次指令后新生成的任务图片，用于本地校色和质检。</li>
+          <li>扩展不自动登录；商品配色只会在你点击“开始逐色生成”后提交当前目标色号。</li>
+          <li>任务历史和图片保存在浏览器扩展的 IndexedDB 中。</li>
+          <li>归档目录在挂件顶部选择；浏览器重启或权限失效后需要重新授权。</li>
+          <li>模型 Key 按当前产品要求保存在 <code>chrome.storage.local</code>，不提供系统级密钥库保护。</li>
+          <li>不需要启动 Python、Visual Forge 本地服务或访问本机 API。</li>
+          <li>“回填 Muse”只把摘要写入输入框，发送动作由你确认。</li>
+        </ul>
+      </section>
+    </main>
+    <script src="local-model.js"></script>
+    <script src="options.js"></script>
+  </body>
+</html>
+

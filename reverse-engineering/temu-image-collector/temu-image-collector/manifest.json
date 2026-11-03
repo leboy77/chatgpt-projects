@@ -1,0 +1,53 @@
+{
+  "manifest_version": 3,
+  "name": "Temu 商品首图采集器",
+  "description": "按简单、多首图和完整三种模式采集 Temu 商品列表图片并在本地打包。",
+  "version": "0.3.6",
+  "icons": {
+    "16": "icons/icon.png",
+    "48": "icons/icon.png",
+    "128": "icons/icon.png"
+  },
+  "permissions": [
+    "storage",
+    "unlimitedStorage",
+    "browsingData"
+  ],
+  "host_permissions": [
+    "https://www.temu.com/*",
+    "https://*.temu.com/*",
+    "https://img.kwcdn.com/*",
+    "https://*.kwcdn.com/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.temu.com/*",
+        "https://*.temu.com/*"
+      ],
+      "js": [
+        "src/page-bridge.js"
+      ],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": [
+        "https://www.temu.com/*",
+        "https://*.temu.com/*"
+      ],
+      "css": [
+        "src/content.css"
+      ],
+      "js": [
+        "lib/jszip.min.js",
+        "src/title-workbook.js",
+        "src/content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "background": {
+    "service_worker": "src/background.js"
+  }
+}

@@ -5,3 +5,4 @@
 当前项目：
 
 - [background-generator](background-generator/)：生成“暖砂图腾”商品背景图，包含 Python 源码和示例 PNG。
+- [visual-forge-studio](visual-forge-studio/)：POD 商品视觉生产后端与 Muse Chromium 扩展。

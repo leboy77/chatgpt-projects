@@ -1,0 +1,50 @@
+{
+  "manifest_version": 3,
+  "name": "TEMU 商品图片自动编辑助手",
+  "version": "0.10.14",
+  "description": "在 TEMU 商家中心按 SKC 批量新增色值并自动补正面图/背面图，最后自动提交。",
+  "minimum_chrome_version": "111",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAsF0V/1q4a8gNOHsagG67kb215pc0yitYB3Bzl9RQKoFl5aEtbSY4QgmW1Qc+pbwm4igIN8slohKWsFuS/GiRiNuBbv3r7/p/2V+t8r0UNQtOf/saJqTffYsJqZqojrkp7dxKOPeLdANTSYDpLdbzgHhR8UILaK7egoCS4R1x9LRJ8FnrnWKYXuaxOvwak2z4NO4zC8Irl6OjhqWD1gDX7MvsvioJsgm6yzBhE7UGmAmjDH5yVP09NlDWfFKRfyQzF5G0jDqTeIV2dL643cgfPMYNmkgQ5ahd9pcqkntxvuXb2gmqI/kgjdQCunUPEMZOC/SmRFU9JPjhMBu5xKFyywIDAQAB",
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "permissions": [
+    "storage",
+    "scripting",
+    "activeTab",
+    "debugger"
+  ],
+  "host_permissions": [
+    "https://agentseller.temu.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://agentseller.temu.com/*"
+      ],
+      "js": [
+        "content/bridge.js"
+      ],
+      "run_at": "document_start",
+      "all_frames": false
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "page/main.js"
+      ],
+      "matches": [
+        "https://agentseller.temu.com/*"
+      ]
+    }
+  ],
+  "action": {
+    "default_title": "TEMU 图片助手（面板显示在页面右下角）"
+  }
+}

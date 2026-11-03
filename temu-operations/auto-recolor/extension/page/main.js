@@ -23,13 +23,14 @@
   const BOT_HASH = 'temu-image-bot';
   const DB_NAME = 'temu-image-bot';
   const DB_STORE = 'kv';
-  const VERSION = '0.10.11';
+  const VERSION = '0.10.14';
   const LEASE_KEY = 'temu-image-bot-task-lease-v2';
   const LEASE_MS = 25000;
   const LEGACY_TASK_ID = 'legacy';
   let currentTaskId = LEGACY_TASK_ID;
   let taskLibrary = [];
   let activeImageTarget = '';
+  let activeMaterialDialog = null;
   const TAB_INFO = { tabId: null, windowId: null };
   const TAB_ID = (() => {
     let id = sessionStorage.getItem('temu-image-bot-tab-id');
@@ -1262,8 +1263,8 @@
             <span class="tag" id="statusFileInfo">未导入状态表</span>
           </div>
           <div class="row setupOnly" style="margin-top:8px">
-            <button class="btn" id="dlDelistTemplate" title="下载下架 SKC ID 的标准 Excel 模板">下载下架 SKC 模板</button>
-            <span class="hint">下架用：先下载标准模板，按列填入要下架的 SKC ID</span>
+            <button class="btn" id="dlMulticolorTemplate" title="下载多色 SKC ID 的标准 Excel 模板">下载多色 SKC 模板</button>
+            <span class="hint">多色用：先下载标准模板，按列填入要处理的多色 SKC ID</span>
           </div>
           <div class="emptyTip setupOnly" style="margin-top:8px">提交前自动核对图片、价格和 SKU；异常会记录原因并按规则处理。</div>
         </div>
@@ -1599,7 +1600,7 @@
     shadow.getElementById('impFront').onclick = () => pickFolder('front');
     shadow.getElementById('impBack').onclick = () => pickFolder('back');
     shadow.getElementById('expStatus').onclick = downloadStatusWorkbook;
-    shadow.getElementById('dlDelistTemplate').onclick = downloadDelistTemplate;
+    shadow.getElementById('dlMulticolorTemplate').onclick = downloadMulticolorTemplate;
     shadow.getElementById('newTask').onclick = onCreateTask;
     shadow.getElementById('prepareTask').onclick = onPrepareTask;
     shadow.getElementById('deleteTask').onclick = onDeleteTask;
@@ -2965,21 +2966,21 @@
       { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
   }
 
-  function downloadDelistTemplate() {
+  function downloadMulticolorTemplate() {
     try {
       const blob = buildBlankWorkbook([{
-        name: '下架SKC清单',
-        rows: [['下架 SKC ID', '状态']],
+        name: '多色SKC清单',
+        rows: [['多色 SKC ID', '状态']],
       }]);
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
-      a.download = '下架SKC清单-模板.xlsx';
+      a.download = '多色SKC清单-模板.xlsx';
       a.click();
       setTimeout(() => URL.revokeObjectURL(a.href), 10000);
-      log('已下载下架 SKC ID 标准模板：下架SKC清单-模板.xlsx');
+      log('已下载多色 SKC ID 标准模板：多色SKC清单-模板.xlsx');
       return true;
     } catch (err) {
-      log('下载下架 SKC 模板失败：' + err.message, 'error');
+      log('下载多色 SKC 模板失败：' + err.message, 'error');
       return false;
     }
   }
@@ -3595,12 +3596,38 @@
   }
 
   // ============================================================ 素材中心
+  function isMaterialDialog(el) {
+    return !!el
+      && el.isConnected
+      && visible(el)
+      && /MDL_innerWrapper/.test(el.className || '')
+      && (el.innerText || '').includes('本地上传')
+      && !(el.innerText || '').includes('无需重复上传');
+  }
+
+  function ownsViewportCenter(el) {
+    if (!el || !el.isConnected || !visible(el)) return false;
+    const r = el.getBoundingClientRect();
+    const x = Math.max(1, Math.min(window.innerWidth - 1, r.left + r.width / 2));
+    const y = Math.max(1, Math.min(window.innerHeight - 1, r.top + r.height / 2));
+    const hit = document.elementFromPoint(x, y);
+    return !!hit && (el === hit || el.contains(hit) || hit.contains(el));
+  }
+
   function materialDialog() {
-    const list = allVisible(document)
-      .filter((el) => /MDL_innerWrapper/.test(el.className || '')
-        && (el.innerText || '').includes('本地上传')
-        && !(el.innerText || '').includes('无需重复上传'));
-    return list[list.length - 1] || null;
+    // 素材中心、去重提示和上传浮层可能同时留在 DOM。优先使用本次流程明确打开的弹窗，
+    // 避免 selectedCount() 从另一个“已选 0 个”的残留弹窗读数。
+    if (isMaterialDialog(activeMaterialDialog) && ownsViewportCenter(activeMaterialDialog)) {
+      return activeMaterialDialog;
+    }
+    const list = allVisible(document).filter(isMaterialDialog);
+    activeMaterialDialog = list.find(ownsViewportCenter) || list[list.length - 1] || null;
+    return activeMaterialDialog;
+  }
+
+  function resolveMaterialDialog(dlg) {
+    if (isMaterialDialog(dlg)) return dlg;
+    return materialDialog();
   }
 
   function cropDialog() {
@@ -3648,8 +3675,14 @@
     if (/disabled/.test(trigger.className || '')) {
       throw new Error('该色值行的图片入口被平台锁定（原色值行不可改，请检查是否误操作到旧行）');
     }
+    activeMaterialDialog = null;
     await realClick(trigger);
     const dlg = await waitFor(() => materialDialog(), { timeout: 40000, desc: '素材中心弹窗' });
+    activeMaterialDialog = dlg;
+    const candidates = allVisible(document).filter(isMaterialDialog);
+    if (candidates.length > 1) {
+      log(`检测到 ${candidates.length} 个素材中心节点，已锁定当前第 ${rowIdx + 1} 行弹窗`);
+    }
     await sleep(1200);
     return dlg;
   }
@@ -3665,22 +3698,25 @@
       if (close) await realClick(close);
     }
     await waitFor(() => !materialDialog(), { timeout: 15000, desc: '素材中心弹窗关闭' });
+    activeMaterialDialog = null;
   }
 
   function materialSearchInput(dlg) {
-    dlg = materialDialog() || dlg;
-    return allVisible(dlg).find((i) => i.tagName === 'INPUT' && i.placeholder === '请输入素材名称');
+    const scope = resolveMaterialDialog(dlg);
+    return scope
+      ? allVisible(scope).find((i) => i.tagName === 'INPUT' && i.placeholder === '请输入素材名称')
+      : null;
   }
 
   async function searchMaterial(dlg, keyword) {
-    dlg = materialDialog() || dlg;
-    const box = materialSearchInput(dlg);
+    const scope = resolveMaterialDialog(dlg);
+    const box = materialSearchInput(scope);
     if (!box) return false;
     await setInput(box, keyword);
     await sleep(300);
     // 搜索按钮是 svg 放大镜，位于输入框右侧
-    const scope = box.closest('[class*=reunitBlock]') || box.parentElement;
-    const svg = [...scope.querySelectorAll('svg')].pop();
+    const searchScope = box.closest('[class*=reunitBlock]') || box.parentElement;
+    const svg = [...searchScope.querySelectorAll('svg')].pop();
     if (svg && visible(svg)) {
       await realClick(svg);
     } else {
@@ -3692,8 +3728,8 @@
   }
 
   async function clearMaterialSearch(dlg) {
-    dlg = materialDialog() || dlg;
-    const box = materialSearchInput(dlg);
+    const scope = resolveMaterialDialog(dlg);
+    const box = materialSearchInput(scope);
     if (!box) return;
     await setInput(box, '');
     await sleep(400);
@@ -3704,8 +3740,9 @@
   }
 
   function findMaterialCard(dlg, regex) {
-    dlg = materialDialog() || dlg;
-    const hits = allVisible(dlg).filter((el) => regex.test((el.innerText || '').trim()));
+    const scope = resolveMaterialDialog(dlg);
+    if (!scope) return null;
+    const hits = allVisible(scope).filter((el) => regex.test((el.innerText || '').trim()));
     if (!hits.length) return null;
     // 名称标签本身带子元素，这里取“后代最少”的最内层节点
     const min = Math.min(...hits.map((el) => el.querySelectorAll('*').length));
@@ -3719,18 +3756,103 @@
   }
 
   function selectedCount(dlg) {
-    dlg = materialDialog() || dlg;
-    const m = (dlg.innerText || '').match(/已选\s*(\d+)\s*个/);
+    const scope = resolveMaterialDialog(dlg);
+    if (!scope) return -1;
+    const matches = allVisible(scope)
+      .filter((el) => /已选\s*\d+\s*个/.test(el.innerText || ''))
+      .sort((a, b) => a.querySelectorAll('*').length - b.querySelectorAll('*').length);
+    const text = matches[0]?.innerText || scope.innerText || '';
+    const m = text.match(/已选\s*(\d+)\s*个/);
     return m ? Number(m[1]) : -1;
   }
 
-  async function selectCard(labelEl) {
-    const card = labelEl.closest('[class*=cardContainer]') || labelEl.parentElement.parentElement || labelEl;
+  function isCardSelected(card) {
+    if (!card) return false;
+    const directFlag = [
+      card.getAttribute('aria-selected'),
+      card.getAttribute('aria-checked'),
+      card.getAttribute('data-selected'),
+      card.getAttribute('data-checked'),
+    ].some((value) => String(value).toLowerCase() === 'true');
+    if (directFlag) return true;
+    if ([...card.querySelectorAll('input[type="checkbox"]')].some((input) => input.checked)) {
+      return true;
+    }
+    if (card.querySelector(
+      '[aria-selected="true"],[aria-checked="true"],[data-selected="true"],[data-checked="true"]'
+    )) {
+      return true;
+    }
+    const classTokens = [card, ...card.querySelectorAll('*')]
+      .map((el) => String(el.className || ''))
+      .join(' ');
+    return /(?:^|[\s_-])(selected|checked)(?:$|[\s_-])/i.test(classTokens);
+  }
+
+  function materialTargetKey(target) {
+    const name = typeof target === 'string' ? target : baseName(target.name);
+    return name.trim().replace(/-\d+$/, '');
+  }
+
+  async function selectCard(labelEl, dlg = null) {
+    const scope = resolveMaterialDialog(dlg);
+    const before = selectedCount(scope);
+    const card =
+      labelEl.closest('[class*=cardContainer]') ||
+      labelEl.closest('[class*=item],[class*=card],[class*=Card]') ||
+      labelEl.parentElement?.parentElement ||
+      labelEl;
+    if (isCardSelected(card)) return selectedCount(scope);
     card.scrollIntoView({ block: 'center', behavior: 'instant' });
     await sleep(350);
-    const r = card.getBoundingClientRect();
-    await clickAt(r.left + r.width / 2, r.top + Math.min(60, r.height / 3));
-    await sleep(500);
+    const cardRect = card.getBoundingClientRect();
+    const labelRect = labelEl.getBoundingClientRect();
+    const control = [
+      ...card.querySelectorAll('input[type="checkbox"],[role="checkbox"],[class*=checkbox],[class*=checkIcon]')
+    ].find(visible);
+    const points = [];
+    if (control) {
+      const r = control.getBoundingClientRect();
+      points.push({ x: r.left + r.width / 2, y: r.top + r.height / 2, source: 'checkbox' });
+    }
+    points.push({
+      x: labelRect.left + labelRect.width / 2,
+      y: Math.max(cardRect.top + 8, labelRect.top - Math.min(45, labelRect.top - cardRect.top - 4)),
+      source: 'thumbnail',
+    });
+    points.push({
+      x: cardRect.left + cardRect.width / 2,
+      y: cardRect.top + Math.min(60, cardRect.height / 3),
+      source: 'card-upper',
+    });
+    points.push({
+      x: cardRect.left + cardRect.width / 2,
+      y: cardRect.top + cardRect.height / 2,
+      source: 'card-center',
+    });
+
+    for (const point of points) {
+      await clickAt(point.x, point.y);
+      const increased = await waitFor(() => {
+        const current = selectedCount(scope);
+        return before >= 0 && current > before ? current : null;
+      }, { timeout: 1500, interval: 120, desc: '素材选中数量增加' }).catch(() => null);
+      if (increased !== null) return increased;
+      if (isCardSelected(card)) return selectedCount(scope);
+
+      const current = selectedCount(scope);
+      if (before >= 0 && current >= 0 && current < before) {
+        // 极端情况下点击命中了已选卡片，再点一次恢复原状态后换点击位置。
+        await clickAt(point.x, point.y);
+        await sleep(400);
+      }
+    }
+
+    const current = selectedCount(scope);
+    throw new Error(
+      `素材卡片「${(labelEl.innerText || '').trim() || '未命名'}」点击后未选中`
+      + `（点击前 ${before}，点击后 ${current}，尝试 ${points.map((p) => p.source).join('/')}）`
+    );
   }
 
   async function dismissDedupeIfAny() {
@@ -3874,10 +3996,15 @@
     }
     if (!label) throw new Error(`素材中心里找不到「${base}」`);
     const name = (label.innerText || '').trim();
-    await selectCard(label);
+    const before = selectedCount(dlg);
+    const after = await selectCard(label, dlg);
+    if (before >= 0 && after <= before) {
+      throw new Error(`素材「${name}」选中状态未增加（${before} → ${after}）`);
+    }
     await sleep(250);
     await rejectImageQualityIfAny(base, [base]);
-    markSkuProgress(`选中素材 ${name}`);
+    markSkuProgress(`选中素材 ${name}（已选 ${after} 个）`);
+    log(`已选中素材「${name}」（已选 ${before} → ${after}）`);
     return name;
   }
 
@@ -3898,6 +4025,7 @@
     }
     await clickInDialog(dlg, '确认');
     await waitFor(() => !materialDialog(), { timeout: 30000, desc: '素材中心弹窗关闭' });
+    activeMaterialDialog = null;
     await waitFor(() => carouselImgCount(rowIdx) > before,
       { timeout: 30000, desc: `第 ${rowIdx + 1} 行轮播图增加` });
     log(`正面图已写入第 ${rowIdx + 1} 行（素材 ${name}）`);
@@ -3933,6 +4061,7 @@
     }
     await clickInDialog(useDlg, '确认');
     await waitFor(() => !materialDialog(), { timeout: 30000, desc: '素材中心弹窗关闭' });
+    activeMaterialDialog = null;
     await waitFor(() => carouselImgCount(rowIdx) > before,
       { timeout: 30000, desc: `第 ${rowIdx + 1} 行轮播图增加` });
     log(`正面图已写入第 ${rowIdx + 1} 行（素材 ${name}）`);
@@ -4058,6 +4187,7 @@
     await clickInDialog(dlg, '确认');
     markSkuProgress(`第 ${rowIdx + 1} 行素材已确认`);
     await waitFor(() => !materialDialog(), { timeout: 30000, desc: '素材中心弹窗关闭' });
+    activeMaterialDialog = null;
     await waitFor(() => carouselImgCount(rowIdx) >= expected,
       { timeout: 40000, desc: `第 ${rowIdx + 1} 行图片达到 ${expected} 张` });
     if (!state.backMaterialNames.length) {
@@ -4074,12 +4204,40 @@
 
   async function selectPlannedTargetsForRow(rowIdx, dlg, targets) {
     const expected = targets.length;
+    const duplicates = [];
+    const seenTargets = new Set();
+    for (const target of targets) {
+      const key = materialTargetKey(target);
+      if (seenTargets.has(key)) duplicates.push(key);
+      seenTargets.add(key);
+    }
+    if (duplicates.length) {
+      throw new Error(
+        `第 ${rowIdx + 1} 行图片计划存在重复素材：${[...new Set(duplicates)].join('、')}`
+        + '。请检查正面图与背面图文件夹是否包含同一张图片。'
+      );
+    }
     const selBefore = selectedCount(dlg);
     const selectedNames = [];
-    for (const target of targets) {
+    for (let index = 0; index < targets.length; index += 1) {
+      const target = targets[index];
       assertRunning();
+      const beforePick = selectedCount(dlg);
       const name = await pickMaterial(dlg, target, { uploadIfMissing: false });
       selectedNames.push(name);
+      const afterPick = selectedCount(dlg);
+      const expectedTotal = selBefore >= 0 ? selBefore + index + 1 : -1;
+      if (
+        beforePick >= 0 &&
+        afterPick >= 0 &&
+        expectedTotal >= 0 &&
+        afterPick !== expectedTotal
+      ) {
+        throw new Error(
+          `第 ${rowIdx + 1} 行选择「${name}」后已选数量异常`
+          + `（本次 ${beforePick} → ${afterPick}，应为 ${expectedTotal}）`
+        );
+      }
       markSkuProgress(`第 ${rowIdx + 1} 行已选 ${selectedNames.length}/${targets.length} 张`);
       await sleep(220);
     }
@@ -4093,6 +4251,7 @@
     await rejectImageQualityIfAny(targetNames[0], targetNames);
     markSkuProgress(`第 ${rowIdx + 1} 行图片已确认`);
     await waitFor(() => !materialDialog(), { timeout: 30000, desc: '素材中心弹窗关闭' });
+    activeMaterialDialog = null;
     await waitFor(() => carouselImgCount(rowIdx) >= expected,
       { timeout: 40000, desc: `第 ${rowIdx + 1} 行图片达到 ${expected} 张` });
     if (state.current) {
@@ -4233,6 +4392,7 @@
     }
     await clickInDialog(dlg, '确认');
     await waitFor(() => !materialDialog(), { timeout: 30000, desc: '素材中心弹窗关闭' });
+    activeMaterialDialog = null;
     await waitFor(() => carouselImgCount(rowIdx) >= before + files.length,
       { timeout: 40000, desc: `第 ${rowIdx + 1} 行轮播图增加 ${files.length} 张` });
     if (!state.backMaterialNames.length) {
@@ -6190,6 +6350,11 @@
     ensureImagePlan,
     imageQualityDialog,
     rejectImageQualityIfAny,
+    materialDialog,
+    selectedCount,
+    selectCard,
+    selectPlannedTargetsForRow,
+    getActiveMaterialDialog: () => activeMaterialDialog,
     waitFor,
     log,
   };

@@ -1,10 +1,12 @@
 const fs = require("fs");
+const os = require("os");
 const path = require("path");
 const vm = require("vm");
 
 const sourcePath =
   process.argv[2] ||
-  "C:\\Users\\QZJLKJ\\Desktop\\TEMU产品列表图片下载\\lib\\jclps.js";
+  process.env.JCLPS_SOURCE ||
+  path.join(os.homedir(), "Desktop", "TEMU产品列表图片下载", "lib", "jclps.js");
 const outputPath =
   process.argv[3] || path.join(__dirname, "jclps.deobfuscated.js");
 

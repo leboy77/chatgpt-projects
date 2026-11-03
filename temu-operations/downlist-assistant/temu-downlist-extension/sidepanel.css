@@ -56,7 +56,8 @@ body {
 }
 
 button,
-input {
+input,
+textarea {
   font: inherit;
 }
 
@@ -223,6 +224,7 @@ main {
 }
 
 .field input,
+.field textarea,
 .file-input {
   width: 100%;
   padding: 9px 10px;
@@ -233,13 +235,50 @@ main {
   color: var(--text);
 }
 
-.field input:focus {
+.field input:focus,
+.field textarea:focus {
   border-color: var(--secondary);
   box-shadow: 0 0 0 3px rgba(31, 111, 235, 0.1);
 }
 
+.field textarea {
+  min-height: 104px;
+  resize: vertical;
+  line-height: 1.5;
+  font-family: Consolas, "SFMono-Regular", monospace;
+  font-size: 12px;
+}
+
 .file-input {
   display: none;
+}
+
+.direct-input-block {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.direct-actions {
+  grid-template-columns: 1.45fr 1fr;
+  margin-top: 0;
+}
+
+.input-divider {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0 10px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.input-divider::before,
+.input-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border);
 }
 
 .mode-group {
@@ -289,6 +328,22 @@ main {
 
 .checkbox-row input {
   margin-top: 2px;
+}
+
+.checkbox-row.info {
+  background: #eef5ff;
+  color: #174ea6;
+}
+
+.checkbox-row strong,
+.checkbox-row small {
+  display: block;
+}
+
+.checkbox-row small {
+  margin-top: 2px;
+  opacity: 0.75;
+  font-size: 10px;
 }
 
 .hidden {

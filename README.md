@@ -1,6 +1,8 @@
 # ChatGPT Projects Archive
 
-这里汇总整理了过去在 ChatGPT 工作目录中完成的 8 个项目。仓库按用途分为 Temu 运营工具、逆向分析、浏览器工具和创意工具；Temu 下架助手内部又拆分为多个独立子项目。
+这里汇总整理 ChatGPT 工作目录中已完成的项目。仓库按用途分为 Temu 运营工具、逆向分析、浏览器工具和创意工具；Temu 下架助手内部又拆分为多个独立子项目。
+
+最近同步：2026-11-03。
 
 ## 项目导航
 
@@ -8,11 +10,13 @@
 | --- | --- | --- | --- |
 | Temu 运营工具 | [全球价格申报核价助手](temu-operations/price-checker/) | `美区自动核价` | Chrome 扩展、核价规则、SKC/国家价格导入、测试与文档 |
 | Temu 运营工具 | [下架助手合集](temu-operations/downlist-assistant/) | `下架保存` | 自动下架扩展、广告花费监控、表格工具和旧版原生助手 |
-| Temu 运营工具 | [商品自动复色助手](temu-operations/auto-recolor/) | `temu自动复色` | 批量新增色值、补图、提交、任务队列与诊断工具 |
-| 逆向分析 | [Temu 商品首图采集器](reverse-engineering/temu-image-collector/) | `temu图片下载逆向` | 首图/轮播图采集扩展、接口分析、逆向报告和探针工具 |
+| Temu 运营工具 | [商品自动复色助手](temu-operations/auto-recolor/) | `temu自动复色` | 批量新增色值、补图、提交、任务队列、材质图和诊断工具 |
+| 逆向分析 | [Temu 商品首图采集器](reverse-engineering/temu-image-collector/) | `temu图片下载逆向` | 首图/轮播图采集、商品标题导出、推荐区过滤、逆向报告和调试工具 |
 | 浏览器工具 | [Chrome CDP 页面探针](browser-tools/chrome-cdp-probe/) | `测试` | 仅依赖 Python 标准库的 Chrome DevTools Protocol 客户端 |
+| 浏览器工具 | [批量流量加速 Demo](browser-tools/batch-traffic-accelerator/) | `批量流量加速` | 流量规则筛选、价格与毛利预演、分批执行、CSV 导出和侧边栏 Demo |
 | 创意工具 | [暖砂图腾背景生成器](creative-tools/background-generator/) | `New project` | 程序化生成商品背景图和示例成品 |
-| 空项目记录 | [空目录说明](archive/README.md) | `批量流量加速`、`日常` | 原目录没有文件，因此没有可上传内容 |
+| 创意工具 | [Visual Forge Studio](creative-tools/visual-forge-studio/) | `整理`、`MUSE知识库` | POD 视觉生产后端、Muse 扩展、校色质检、文档和测试 |
+| 空项目记录 | [空目录说明](archive/README.md) | `日常` | 原目录没有文件，因此没有可上传内容 |
 
 ## 仓库整理规则
 

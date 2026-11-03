@@ -34,7 +34,7 @@ $items = @(
 foreach ($item in $items) {
     Copy-Item -LiteralPath (Join-Path $projectDir $item) -Destination $packageDir -Recurse -Force
 }
-$zipPath = Join-Path $releaseRoot "TemuDownlistExtension_v2.4.1.zip"
+$zipPath = Join-Path $releaseRoot "TemuDownlistExtension_v2.6.0.zip"
 if (Test-Path -LiteralPath $zipPath) {
     Remove-Item -LiteralPath $zipPath -Force
 }

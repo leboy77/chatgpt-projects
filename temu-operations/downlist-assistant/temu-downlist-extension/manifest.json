@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Temu 下架与主图归档",
-  "version": "2.4.1",
+  "version": "2.6.0",
   "description": "按 SPU 查询 Temu 商品，自动保存主图并申请下架。",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA6JWLFKu+t3XTeWDRVLgxUfM6ca15GkTe/0Sbh+DsYn1IXZXmszf29PrpN883rM4QDuVOrbQPvJQJR16KYL0uEjQ5O8b/uyZy486EYgH4X/JHDUiN07amLzUBnejr1MbhNc+7qHSwEfcxQrT/T6hyzxqacH/UrDw0oILZ0RUGbJBZCrTItuHGO9sCGN4frVy9YU+PYd4o12hZFT1b0q4QlTlhMuGSmmz0tDOUfupMHrBg9gj19PxGhiin7EhR3PM0c+WmWHA1csa9yj6Bvx8XsHsAPLLgvRGPi1Y0wDQbGJlj2I4z+hvmdK7/r8TWQlqUikX3K61US7SEF4N6CIJLgwIDAQAB",
   "minimum_chrome_version": "114",

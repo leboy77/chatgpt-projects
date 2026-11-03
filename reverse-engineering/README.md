@@ -4,6 +4,6 @@
 
 当前项目：
 
-- [temu-image-collector](temu-image-collector/)：Temu 商品首图与轮播图采集器，包含扩展、逆向分析报告和调试脚本。
+- [temu-image-collector](temu-image-collector/)：Temu 商品首图与轮播图采集器，包含标题导出、推荐区过滤、暂停恢复、扩展源码、逆向分析报告和调试脚本。
 
 仅供学习和自有业务工具开发使用。请遵守目标平台的服务条款、访问限制和内容版权要求。

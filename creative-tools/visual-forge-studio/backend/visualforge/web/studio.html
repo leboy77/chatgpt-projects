@@ -1,0 +1,850 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta
+      name="description"
+      content="MUSE Visual Forge - 面向 POD 商品团队的 AI 视觉生产工作台"
+    >
+    <title>MUSE Visual Forge</title>
+    <link rel="stylesheet" href="/assets/studio.css">
+  </head>
+  <body>
+    <div class="ambient" aria-hidden="true">
+      <i class="orb orb-a"></i>
+      <i class="orb orb-b"></i>
+      <i class="orb orb-c"></i>
+    </div>
+
+    <section class="auth-screen" id="authScreen">
+      <div class="auth-copy">
+        <a class="brand brand-large" href="/" aria-label="MUSE Visual Forge">
+          <span class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 36 36">
+              <path d="M7 26.5 18 5l11 21.5H7Z"></path>
+              <path d="M12.5 21.5h11"></path>
+              <path d="m14 13 4 4 4-8"></path>
+            </svg>
+          </span>
+          <span>
+            <strong>MUSE</strong>
+            <small>VISUAL FORGE</small>
+          </span>
+        </a>
+        <p class="eyebrow">POD VISUAL PRODUCTION SYSTEM</p>
+        <h1>从一个设计，<br><em>生产整组上架素材。</em></h1>
+        <p class="auth-lede">
+          把类目生图、精准配色、多规格套图和质量追溯放进一条生产链。
+          为商品团队减少重复操作，让每一张图都可复用、可验收。
+        </p>
+        <div class="auth-proof">
+          <span><b>01</b> 类目化生成</span>
+          <span><b>02</b> 精确色值</span>
+          <span><b>03</b> 完整交付包</span>
+        </div>
+      </div>
+
+      <div class="auth-card">
+        <div class="auth-card-head">
+          <span class="mini-mark">M</span>
+          <div>
+            <p class="eyebrow">WELCOME BACK</p>
+            <h2 id="authTitle">登录工作台</h2>
+          </div>
+        </div>
+        <div class="auth-switch" role="tablist" aria-label="登录或注册">
+          <button class="is-active" data-auth-mode="login" type="button">登录</button>
+          <button data-auth-mode="register" type="button">注册</button>
+        </div>
+        <form id="authForm" novalidate>
+          <label class="field">
+            <span>手机号</span>
+            <input
+              id="authPhone"
+              name="phone"
+              inputmode="numeric"
+              autocomplete="username"
+              placeholder="请输入 11 位手机号"
+              maxlength="11"
+            >
+          </label>
+          <label class="field">
+            <span>密码</span>
+            <input
+              id="authPassword"
+              name="password"
+              type="password"
+              autocomplete="current-password"
+              placeholder="请输入登录密码"
+            >
+          </label>
+          <label class="field register-only" hidden>
+            <span>确认密码</span>
+            <input
+              id="authConfirm"
+              name="confirm"
+              type="password"
+              autocomplete="new-password"
+              placeholder="请再次输入密码"
+            >
+          </label>
+          <label class="field">
+            <span>验证码</span>
+            <span class="captcha-row">
+              <input
+                id="authCode"
+                name="code"
+                inputmode="numeric"
+                autocomplete="off"
+                placeholder="计算结果"
+              >
+              <button class="captcha" id="captchaButton" type="button">
+                <span id="captchaText">6 + 3 = ?</span>
+              </button>
+            </span>
+          </label>
+          <label class="legal login-only">
+            <input type="checkbox" id="authLegal" checked>
+            <span>我已阅读并同意服务条款和隐私政策</span>
+          </label>
+          <button class="auth-submit" type="submit">
+            <span id="authSubmitText">登录</span>
+            <b aria-hidden="true">→</b>
+          </button>
+        </form>
+        <button class="demo-entry" id="demoEntry" type="button">
+          先进入本地演示工作台
+        </button>
+        <p class="auth-note">
+          本地版使用浏览器演示会话；正式上线前需接入服务端登录、租户隔离与权限校验。
+        </p>
+      </div>
+    </section>
+
+    <div class="app-shell" id="appShell" hidden>
+      <aside class="sidebar" id="sidebar">
+        <a class="brand" href="#" data-view="home" aria-label="返回工作台首页">
+          <span class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 36 36">
+              <path d="M7 26.5 18 5l11 21.5H7Z"></path>
+              <path d="M12.5 21.5h11"></path>
+              <path d="m14 13 4 4 4-8"></path>
+            </svg>
+          </span>
+          <span>
+            <strong>MUSE</strong>
+            <small>VISUAL FORGE</small>
+          </span>
+        </a>
+
+        <nav class="primary-nav" aria-label="主导航">
+          <p>WORKSPACE</p>
+          <button class="is-active" data-view="home" type="button">
+            <span class="nav-icon">⌂</span>
+            <span>工作台</span>
+          </button>
+          <button data-view="create" type="button">
+            <span class="nav-icon">✦</span>
+            <span>AI 创作</span>
+          </button>
+          <button data-view="color" type="button">
+            <span class="nav-icon">◐</span>
+            <span>精准配色</span>
+            <i class="nav-badge">自研</i>
+          </button>
+          <button data-view="suite" type="button">
+            <span class="nav-icon">▦</span>
+            <span>模板套图</span>
+          </button>
+          <button data-view="cutting" type="button">
+            <span class="nav-icon">✂</span>
+            <span>工厂切片</span>
+          </button>
+          <p>LIBRARY</p>
+          <button data-view="history" type="button">
+            <span class="nav-icon">◷</span>
+            <span>创作历史</span>
+          </button>
+          <button data-view="assets" type="button">
+            <span class="nav-icon">▧</span>
+            <span>素材资产</span>
+          </button>
+          <button data-view="templates" type="button">
+            <span class="nav-icon">⚙</span>
+            <span>模板配置</span>
+          </button>
+          <button data-view="billing" type="button">
+            <span class="nav-icon">◇</span>
+            <span>积分明细</span>
+          </button>
+        </nav>
+        <div class="sidebar-foot">
+          <div class="queue-state">
+            <i></i>
+            <span>
+              <b id="sideQueueTitle">本地服务检测中</b>
+              <small id="sideQueueText">正在读取任务队列</small>
+            </span>
+          </div>
+          <button data-view="profile" type="button">
+            <span class="avatar">V</span>
+            <span>
+              <b>Visual Creator</b>
+              <small>团队管理员</small>
+            </span>
+            <i>···</i>
+          </button>
+        </div>
+      </aside>
+
+      <div class="app-main">
+        <header class="topbar">
+          <div class="topbar-left">
+            <button class="icon-button menu-toggle" id="menuToggle" type="button" aria-label="展开导航">☰</button>
+            <button class="back-button" id="backButton" type="button" hidden aria-label="返回">←</button>
+            <div>
+              <span class="breadcrumb" id="breadcrumb">工作台</span>
+              <strong id="pageHeading">创作总览</strong>
+            </div>
+          </div>
+          <div class="topbar-actions">
+            <button class="notice-button" id="noticeButton" type="button">
+              <span>公告</span>
+              <i></i>
+            </button>
+            <button class="points-button" data-view="billing" type="button">
+              <span>AI 点</span>
+              <b id="pointsValue">1,480</b>
+              <i>＋</i>
+            </button>
+            <button class="icon-button" id="settingsButton" type="button" aria-label="设置">⚙</button>
+            <button class="avatar-button" id="accountButton" data-view="profile" type="button">
+              <span class="avatar">V</span>
+            </button>
+          </div>
+        </header>
+
+        <main class="view-stack">
+          <section class="view is-active" data-page="home">
+            <div class="hero-panel">
+              <div class="hero-grid">
+                <div>
+                  <p class="eyebrow">PRODUCT VISUAL OPERATING SYSTEM</p>
+                  <h1>一张图，<br><em>长出整组商品视觉。</em></h1>
+                  <p class="hero-copy">
+                    从 POD 类目场景到商品精确换色，把灵感、批量生产和质检放进同一条流程。
+                  </p>
+                  <div class="hero-actions">
+                    <button class="primary-action" data-view="create" type="button">
+                      开始新创作 <span>↗</span>
+                    </button>
+                    <button class="secondary-action" data-view="color" type="button">
+                      精准配色工作台
+                    </button>
+                  </div>
+                </div>
+                <div class="hero-system">
+                  <div class="system-orbit orbit-one">
+                    <span>8–20s</span>
+                    <b>自动排产</b>
+                  </div>
+                  <div class="system-orbit orbit-two">
+                    <span>ΔE2000</span>
+                    <b>颜色质检</b>
+                  </div>
+                  <div class="system-core">
+                    <span class="core-mark">M</span>
+                    <b>VISUAL<br>FORGE</b>
+                    <small>QUEUE ONLINE</small>
+                  </div>
+                  <i class="system-line line-a"></i>
+                  <i class="system-line line-b"></i>
+                </div>
+              </div>
+              <div class="metric-row">
+                <div><span>今日已生产</span><b id="metricJobs">0</b><small>个任务</small></div>
+                <div><span>可用 AI 点</span><b id="metricPoints">1,480</b><small>本地演示</small></div>
+                <div><span>异步队列</span><b id="metricQueue">检测中</b><small>可恢复</small></div>
+                <div><span>业务能力</span><b>4</b><small>条真实流水线</small></div>
+              </div>
+            </div>
+
+            <div class="section-head">
+              <div>
+                <p class="eyebrow">START WITH A PRODUCT</p>
+                <h2>选择创作路径</h2>
+              </div>
+              <button class="text-action" id="refreshDashboard" type="button">刷新数据</button>
+            </div>
+            <div class="feature-grid" id="homeFeatureGrid"></div>
+
+            <div class="home-lower-grid">
+              <section class="dashboard-block">
+                <div class="block-head">
+                  <div>
+                    <p class="eyebrow">RECENT PRODUCTION</p>
+                    <h3>最近生产</h3>
+                  </div>
+                  <button class="text-action" data-view="history" type="button">查看全部</button>
+                </div>
+                <div id="recentJobs" class="compact-jobs"></div>
+              </section>
+              <section class="dashboard-block signal-block">
+                <div class="block-head">
+                  <div>
+                    <p class="eyebrow">OUR DIFFERENCE</p>
+                    <h3>可见的交付质量</h3>
+                  </div>
+                  <span class="status-pill">MUSE READY</span>
+                </div>
+                <div class="quality-list">
+                  <div><i>01</i><p><b>精确 HEX 校色</b><span>保留褶皱、纹理和原始光影。</span></p></div>
+                  <div><i>02</i><p><b>ΔE2000 质检</b><span>通过、复核、重试三级判断。</span></p></div>
+                  <div><i>03</i><p><b>可追溯清单</b><span>JSON、CSV、对比图和 ZIP 一并交付。</span></p></div>
+                </div>
+              </section>
+            </div>
+          </section>
+
+          <section class="view" data-page="create">
+            <div class="page-title-row">
+              <div>
+                <p class="eyebrow">AI CREATION STUDIO</p>
+                <h1 id="createTitle">AI T恤创作</h1>
+                <p id="createDescription">输入产品方向或上传参考图，生成一组可继续加工的视觉方案。</p>
+              </div>
+              <span class="integration-chip" id="createStatusChip">真实流水线</span>
+            </div>
+            <div class="category-strip" id="categoryStrip"></div>
+            <div class="studio-layout">
+              <aside class="control-panel">
+                <div class="segmented" id="generationMode">
+                  <button class="is-active" data-mode="single" type="button">单张生成</button>
+                  <button data-mode="batch" type="button">批量生成</button>
+                </div>
+                <div class="segmented segmented-muted" id="inputMode">
+                  <button class="is-active" data-input="upload" type="button">上传图片</button>
+                  <button data-input="url" type="button">图片 URL</button>
+                </div>
+                <label class="upload-zone compact-uploader" id="createUpload">
+                  <input id="createFile" type="file" accept="image/*" hidden>
+                  <img id="createPreview" alt="" hidden>
+                  <span class="upload-empty">
+                    <i>＋</i>
+                    <b id="createUploadTitle">添加参考图</b>
+                    <small id="createUploadHint">拖入图片，或点击选择</small>
+                  </span>
+                </label>
+                <label class="field">
+                  <span>图片 URL</span>
+                  <input id="createUrl" placeholder="https://example.com/product.jpg" hidden>
+                </label>
+                <label class="field">
+                  <span>创作描述</span>
+                  <textarea id="createPrompt" rows="4" placeholder="描述商品、印花、材质、场景和必须保持一致的细节"></textarea>
+                </label>
+                <div class="field-grid">
+                  <label class="field">
+                    <span>生成模型</span>
+                    <select id="createModel">
+                      <option value="conservation">通用模型 · 8 点起</option>
+                      <option value="radicalization">狂野模型 · 10 点起</option>
+                    </select>
+                  </label>
+                  <label class="field">
+                    <span>生成数量</span>
+                    <select id="createCount">
+                      <option value="1">1 张</option>
+                      <option value="2">2 张</option>
+                      <option value="4" selected>4 张</option>
+                      <option value="6">6 张</option>
+                      <option value="8">8 张</option>
+                    </select>
+                  </label>
+                </div>
+                <div class="field-grid">
+                  <label class="field">
+                    <span>画面比例</span>
+                    <select id="createRatio">
+                      <option value="1024x1536" selected>3 : 4 · 推荐</option>
+                      <option value="1024x1024">1 : 1</option>
+                      <option value="1536x1024">3 : 2</option>
+                    </select>
+                  </label>
+                  <label class="field">
+                    <span>质量</span>
+                    <select id="createQuality">
+                      <option value="high">高质量</option>
+                      <option value="medium">标准</option>
+                      <option value="low">快速预览</option>
+                    </select>
+                  </label>
+                </div>
+                <label class="range-field">
+                  <span>重绘幅度 <b id="strengthValue">75%</b></span>
+                  <input id="createStrength" type="range" min="20" max="95" value="75">
+                </label>
+                <label class="check-row">
+                  <input type="checkbox" id="createTitleOption">
+                  <span><b>生成商品标题</b><small>为结果生成英文标题草稿</small></span>
+                </label>
+                <label class="check-row">
+                  <input type="checkbox" id="createFilterOption">
+                  <span><b>AI 云过滤</b><small>标记可能违规或低质量结果</small></span>
+                </label>
+                <div class="estimate">
+                  <span>预计消耗</span>
+                  <b id="estimatePoints">32 AI 点</b>
+                </div>
+                <button class="primary-action full" id="generateButton" type="button">
+                  提交生成任务 <span>↗</span>
+                </button>
+              </aside>
+              <section class="result-panel">
+                <div class="result-toolbar">
+                  <div class="segmented small">
+                    <button class="is-active" type="button">生图结果</button>
+                    <button type="button" data-coming="图案分类">分类结果</button>
+                  </div>
+                  <div class="filter-actions">
+                    <select id="resultFilter" aria-label="筛选结果">
+                      <option value="">全部状态</option>
+                      <option value="running">处理中</option>
+                      <option value="succeeded">成功</option>
+                      <option value="failed">失败</option>
+                    </select>
+                    <button class="icon-button" id="refreshResults" type="button" aria-label="刷新结果">↻</button>
+                  </div>
+                </div>
+                <div class="result-canvas" id="createResults">
+                  <div class="empty-canvas">
+                    <span class="empty-symbol" id="emptyCategorySymbol">T</span>
+                    <h2 id="emptyCategoryTitle">AI T恤创作空间</h2>
+                    <p id="emptyCategoryText">你的设计将在这里出现。上传参考图并提交后，任务会自动刷新。</p>
+                  </div>
+                </div>
+              </section>
+              <aside class="task-rail">
+                <div class="task-rail-head">
+                  <div>
+                    <p class="eyebrow">LIVE QUEUE</p>
+                    <h3>近期任务</h3>
+                  </div>
+                  <button class="text-action" data-view="history" type="button">全部</button>
+                </div>
+                <div id="createTaskRail" class="rail-list"></div>
+              </aside>
+            </div>
+          </section>
+
+          <section class="view" data-page="color">
+            <div class="page-title-row">
+              <div>
+                <p class="eyebrow">VISUAL FORGE / COLOR LAB</p>
+                <h1>精准配色实验室</h1>
+                <p>按指定 HEX 生成商品颜色版本，并输出 ΔE2000 质检与完整交付包。</p>
+              </div>
+              <span class="integration-chip accent">我们自己的业务</span>
+            </div>
+            <div class="color-layout">
+              <aside class="control-panel color-controls">
+                <div class="segmented color-tabs" id="colorModeTabs">
+                  <button class="is-active" data-color-mode="logo" type="button">Logo 多色</button>
+                  <button data-color-mode="batch" type="button">多 Logo 同色</button>
+                  <button data-color-mode="product" type="button">商品多色</button>
+                </div>
+                <div data-color-panel="logo">
+                  <label class="upload-zone" id="logoUpload">
+                    <input id="logoFile" type="file" accept="image/*" hidden>
+                    <img id="logoPreview" alt="" hidden>
+                    <span class="upload-empty"><i>＋</i><b>添加 Logo</b><small>透明 PNG 效果最佳</small></span>
+                  </label>
+                  <label class="field">
+                    <span>目标色值</span>
+                    <textarea id="logoColors" rows="3">#1D2A44, #8C1A2D, #6B6F45</textarea>
+                  </label>
+                  <label class="field">
+                    <span>背景处理</span>
+                    <select id="logoBackground">
+                      <option value="auto">自动识别</option>
+                      <option value="true">强制移除</option>
+                      <option value="false">保留原图</option>
+                    </select>
+                  </label>
+                  <div class="swatch-preview" id="logoSwatches"></div>
+                  <button class="primary-action full" data-submit-color="logo" type="button">
+                    生成全部颜色 <span>↗</span>
+                  </button>
+                </div>
+                <div data-color-panel="batch" hidden>
+                  <label class="upload-zone" id="logosUpload">
+                    <input id="logosFiles" type="file" accept="image/*" multiple hidden>
+                    <span class="upload-empty"><i>＋</i><b>添加多个 Logo</b><small>一次最多 100 个文件</small></span>
+                  </label>
+                  <label class="field">
+                    <span>统一品牌色</span>
+                    <input id="batchLogoColor" value="#D4684F">
+                  </label>
+                  <button class="primary-action full" data-submit-color="batch" type="button">
+                    统一应用品牌色 <span>↗</span>
+                  </button>
+                </div>
+                <div data-color-panel="product" hidden>
+                  <div class="info-callout">
+                    此流程用于接收 Muse 生成的商品版本，再按主图遮罩做精确校色。
+                    请先上传主图，再追加至少一张生成图；主图必须放在第一个。
+                  </div>
+                  <label class="upload-zone" id="productUpload">
+                    <input id="productFiles" type="file" accept="image/*" multiple hidden>
+                    <span class="upload-empty"><i>＋</i><b>添加主图与生成图</b><small>第一个文件为主图，可追加遮罩</small></span>
+                  </label>
+                  <div id="productFileList" class="file-list"></div>
+                  <label class="field">
+                    <span>颜色与名称</span>
+                    <textarea id="productColors" rows="3">#1D2A44|藏青, #8C1A2D|酒红, #6B6F45|橄榄绿</textarea>
+                  </label>
+                  <button class="primary-action full" data-submit-color="product" type="button">
+                    校色并执行 ΔE 质检 <span>↗</span>
+                  </button>
+                </div>
+              </aside>
+              <section class="color-output">
+                <div class="color-output-head">
+                  <div>
+                    <p class="eyebrow">COLOR DELIVERABLE</p>
+                    <h2>精确色版本与质检</h2>
+                  </div>
+                  <div class="quality-legend">
+                    <span><i class="pass"></i>通过</span>
+                    <span><i class="review"></i>复核</span>
+                    <span><i class="retry"></i>重试</span>
+                  </div>
+                </div>
+                <div id="colorResults" class="color-results">
+                  <div class="empty-canvas">
+                    <span class="empty-symbol">ΔE</span>
+                    <h2>等待颜色任务</h2>
+                    <p>每条任务会保留原图、遮罩、成品、对比图和质检清单。</p>
+                  </div>
+                </div>
+              </section>
+            </div>
+          </section>
+
+          <section class="view" data-page="history">
+            <div class="page-title-row">
+              <div>
+                <p class="eyebrow">PRODUCTION ARCHIVE</p>
+                <h1>创作历史</h1>
+                <p>集中查看任务状态、参数、结果图与 ZIP 交付包。</p>
+              </div>
+              <button class="secondary-action" id="historyRefresh" type="button">刷新记录</button>
+            </div>
+            <div class="history-filters">
+              <label class="field">
+                <span>关键词</span>
+                <input id="historySearch" placeholder="任务 ID、类别或描述">
+              </label>
+              <label class="field">
+                <span>状态</span>
+                <select id="historyStatus">
+                  <option value="">全部状态</option>
+                  <option value="queued">排队中</option>
+                  <option value="running">处理中</option>
+                  <option value="succeeded">已完成</option>
+                  <option value="failed">失败</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>业务类型</span>
+                <select id="historyKind">
+                  <option value="">全部业务</option>
+                  <option value="logo_recolor">Logo 多色</option>
+                  <option value="logo_color_batch">多 Logo 同色</option>
+                  <option value="product_generate">商品视觉</option>
+                  <option value="product_color_finalize">商品多色</option>
+                </select>
+              </label>
+            </div>
+            <div class="data-table-wrap">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>创作内容</th>
+                    <th>业务</th>
+                    <th>状态</th>
+                    <th>创建时间</th>
+                    <th>进度</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="historyRows"></tbody>
+              </table>
+              <div class="table-empty" id="historyEmpty" hidden>没有符合条件的创作记录。</div>
+            </div>
+          </section>
+
+          <section class="view" data-page="assets">
+            <div class="page-title-row">
+              <div>
+                <p class="eyebrow">ASSET LIBRARY</p>
+                <h1>素材资产</h1>
+                <p>汇总本机任务已生成的全部图片与交付包。</p>
+              </div>
+              <button class="secondary-action" id="assetsRefresh" type="button">刷新资产</button>
+            </div>
+            <div class="asset-summary">
+              <div><span>图片素材</span><b id="assetCount">0</b></div>
+              <div><span>生产任务</span><b id="assetJobCount">0</b></div>
+              <div><span>交付包</span><b id="assetZipCount">0</b></div>
+            </div>
+            <div class="asset-grid" id="assetGrid"></div>
+          </section>
+
+          <section class="view" data-page="templates">
+            <div class="page-title-row">
+              <div>
+                <p class="eyebrow">TEMPLATE CONFIGURATION</p>
+                <h1>模板配置</h1>
+                <p>保存常用品类、画面比例与预设色板，快速复用生产参数。</p>
+              </div>
+              <button class="primary-action compact" id="newTemplateButton" type="button">＋ 新建模板</button>
+            </div>
+            <div class="template-toolbar">
+              <div class="segmented small" id="templateFilter">
+                <button class="is-active" data-filter="all" type="button">全部</button>
+                <button data-filter="product" type="button">商品生图</button>
+                <button data-filter="color" type="button">精准配色</button>
+                <button data-filter="cutting" type="button">工厂切片</button>
+              </div>
+              <span id="templateCount">0 个模板</span>
+            </div>
+            <div class="template-grid" id="templateGrid"></div>
+          </section>
+
+          <section class="view" data-page="suite">
+            <div class="page-title-row">
+              <div>
+                <p class="eyebrow">MULTI-CATEGORY SUITE</p>
+                <h1>模板套图</h1>
+                <p>批量选择商品类目，把同一份设计延展为多种产品效果图。</p>
+              </div>
+              <span class="integration-chip">流程原型</span>
+            </div>
+            <div class="suite-layout">
+              <section class="suite-builder">
+                <label class="upload-zone suite-upload">
+                  <input id="suiteFile" type="file" accept="image/*" hidden>
+                  <img id="suitePreview" alt="" hidden>
+                  <span class="upload-empty"><i>＋</i><b>上传设计图</b><small>JPG、PNG 或 WEBP</small></span>
+                </label>
+                <div class="suite-categories" id="suiteCategories"></div>
+                <div class="field-grid">
+                  <label class="check-row">
+                    <input type="checkbox" id="suiteSkipExtract" checked>
+                    <span><b>跳过印花提取</b><small>直接使用设计图套图</small></span>
+                  </label>
+                  <label class="check-row">
+                    <input type="checkbox" id="suiteGenerateTitle">
+                    <span><b>生成英文标题</b><small>同时产出标题草稿</small></span>
+                  </label>
+                </div>
+                <button class="primary-action full" id="suiteSubmit" type="button">
+                  创建套图任务 <span>↗</span>
+                </button>
+              </section>
+              <aside class="suite-preview">
+                <p class="eyebrow">SUITE PREVIEW</p>
+                <h2>交付结构</h2>
+                <ol>
+                  <li><b>01</b><span>按类目拆分子任务</span></li>
+                  <li><b>02</b><span>应用模板与裁切区域</span></li>
+                  <li><b>03</b><span>输出合成图、矢量图与标题</span></li>
+                  <li><b>04</b><span>按商品货号打包 ZIP</span></li>
+                </ol>
+                <p class="prototype-note" id="suitePrototypeNote">
+                  当前版本完成参数编排和任务记录；真实套图需要模板 JSON 与后端渲染器后才能上线。
+                </p>
+              </aside>
+            </div>
+          </section>
+
+          <section class="view" data-page="cutting">
+            <div class="page-title-row">
+              <div>
+                <p class="eyebrow">FACTORY CUTTING</p>
+                <h1>工厂切片</h1>
+                <p>按商品类型配置切分设计图，输出可进入生产流程的印刷面片。</p>
+              </div>
+              <span class="integration-chip">需要切片配置</span>
+            </div>
+            <div class="cutting-layout">
+              <section class="control-panel">
+                <label class="upload-zone" id="cuttingUpload">
+                  <input id="cuttingFile" type="file" accept="image/png,image/jpeg" hidden>
+                  <img id="cuttingPreview" alt="" hidden>
+                  <span class="upload-empty"><i>＋</i><b>上传设计图</b><small>JPG 或 PNG，单图不超过 50MB</small></span>
+                </label>
+                <label class="field">
+                  <span>商品类型</span>
+                  <select id="cuttingType">
+                    <option value="tshirt">T恤</option>
+                    <option value="hoodie">卫衣</option>
+                    <option value="blanket">毛毯</option>
+                    <option value="groundmat">地垫</option>
+                    <option value="beach_towel">沙滩巾</option>
+                  </select>
+                </label>
+                <div class="estimate">
+                  <span>预计消耗</span>
+                  <b>2 AI 点 / 类型</b>
+                </div>
+                <button class="primary-action full" id="cuttingSubmit" type="button">
+                  执行切片 <span>↗</span>
+                </button>
+              </section>
+              <section class="cutting-stage">
+                <div class="empty-canvas">
+                  <span class="empty-symbol">✂</span>
+                  <h2>切片空间</h2>
+                  <p>上传设计图并选择商品类型后，切片预览与下载记录将在此显示。</p>
+                </div>
+              </section>
+              <aside class="task-rail">
+                <div class="task-rail-head">
+                  <div><p class="eyebrow">LOCAL RECORDS</p><h3>切片记录</h3></div>
+                </div>
+                <div id="cuttingRecords" class="rail-list"></div>
+              </aside>
+            </div>
+          </section>
+
+          <section class="view" data-page="billing">
+            <div class="page-title-row">
+              <div>
+                <p class="eyebrow">AI CREDITS</p>
+                <h1>积分明细</h1>
+                <p>本地演示使用浏览器点数；正式版应接入服务端账本与退款流水。</p>
+              </div>
+              <button class="primary-action compact" id="rechargeButton" type="button">充值</button>
+            </div>
+            <div class="billing-hero">
+              <div>
+                <span>可用 AI 点</span>
+                <b id="billingBalance">1,480</b>
+                <small>点数值保存在本机浏览器</small>
+              </div>
+              <div class="billing-ring"><span>LIVE</span><b>MUSE</b></div>
+            </div>
+            <div class="data-table-wrap">
+              <table class="data-table">
+                <thead>
+                  <tr><th>时间</th><th>类型</th><th>说明</th><th>关联任务</th><th>点数</th></tr>
+                </thead>
+                <tbody id="billingRows"></tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="view" data-page="profile">
+            <div class="page-title-row">
+              <div>
+                <p class="eyebrow">ACCOUNT</p>
+                <h1>个人中心</h1>
+                <p>管理本地演示账号、业务偏好和服务连接。</p>
+              </div>
+            </div>
+            <div class="profile-layout">
+              <section class="profile-card">
+                <span class="profile-avatar">V</span>
+                <h2 id="profileName">Visual Creator</h2>
+                <p>团队管理员 · MUSE Visual Forge</p>
+                <div class="profile-tags"><span>商品视觉</span><span>POD 自动化</span></div>
+              </section>
+              <section class="settings-card">
+                <h3>工作台设置</h3>
+                <label class="field"><span>显示名称</span><input id="profileDisplayName" value="Visual Creator"></label>
+                <label class="field"><span>默认品牌色</span><input id="profileBrandColor" value="#D4684F"></label>
+                <label class="check-row">
+                  <input type="checkbox" id="profileCompactTitles">
+                  <span><b>紧凑显示标题</b><small>在历史与结果卡片中截断长标题</small></span>
+                </label>
+                <div class="settings-actions">
+                  <button class="primary-action compact" id="saveProfileButton" type="button">保存设置</button>
+                  <button class="danger-button" id="logoutButton" type="button">退出登录</button>
+                </div>
+              </section>
+              <section class="settings-card service-card">
+                <h3>服务连接</h3>
+                <div><span>任务 API</span><b id="apiStatus">检测中</b></div>
+                <div><span>图像提供方</span><b id="providerStatus">检测中</b></div>
+                <div><span>Muse 连接器</span><b>浏览器扩展</b></div>
+                <p>本地 API 地址：<code id="apiAddress">当前页面</code></p>
+              </section>
+            </div>
+          </section>
+        </main>
+      </div>
+    </div>
+
+    <dialog class="studio-dialog" id="jobDialog">
+      <form method="dialog" class="dialog-head">
+        <div>
+          <p class="eyebrow">PRODUCTION DETAIL</p>
+          <h2>任务详情</h2>
+        </div>
+        <button type="submit" class="icon-button" aria-label="关闭">×</button>
+      </form>
+      <div id="jobDialogBody"></div>
+    </dialog>
+
+    <dialog class="studio-dialog small-dialog" id="templateDialog">
+      <form method="dialog" class="dialog-head">
+        <div><p class="eyebrow">TEMPLATE</p><h2>新建模板</h2></div>
+        <button type="submit" class="icon-button" aria-label="关闭">×</button>
+      </form>
+      <div class="dialog-body">
+        <label class="field"><span>模板名称</span><input id="templateName" placeholder="例如：男装 T 恤棚拍"></label>
+        <div class="field-grid">
+          <label class="field"><span>业务类型</span>
+            <select id="templateKind">
+              <option value="product">商品生图</option>
+              <option value="color">精准配色</option>
+              <option value="cutting">工厂切片</option>
+            </select>
+          </label>
+          <label class="field"><span>商品类目</span>
+            <select id="templateCategory">
+              <option value="t_shirt">T恤</option>
+              <option value="hoodie">卫衣</option>
+              <option value="blanket">毛毯</option>
+              <option value="groundmat">地垫</option>
+              <option value="beach_towel">沙滩巾</option>
+              <option value="tin_sign">铁皮画</option>
+            </select>
+          </label>
+        </div>
+        <label class="field"><span>预设色板</span><input id="templateColors" value="#1D2A44, #8C1A2D, #6B6F45"></label>
+        <label class="field"><span>模板备注</span><textarea id="templateNote" rows="3" placeholder="记录裁切、文案或发布要求"></textarea></label>
+        <button class="primary-action full" id="saveTemplateButton" type="button">保存模板</button>
+      </div>
+    </dialog>
+
+    <dialog class="studio-dialog small-dialog" id="noticeDialog">
+      <form method="dialog" class="dialog-head">
+        <div><p class="eyebrow">ANNOUNCEMENT</p><h2>工作台公告</h2></div>
+        <button type="submit" class="icon-button" aria-label="关闭">×</button>
+      </form>
+      <div class="dialog-body notice-body">
+        <p><b>MUSE Visual Forge 第一阶段已上线</b></p>
+        <p>精准换色、Logo 批处理和产品视觉裂变已连接本机真实任务队列。</p>
+        <p>模板套图、工厂切片和原站类目工具当前保留完整交互原型，待补充模板、切图配置及对应模型后端。</p>
+      </div>
+    </dialog>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <div class="sidebar-scrim" id="sidebarScrim"></div>
+    <script src="/assets/studio.js" defer></script>
+  </body>
+</html>

@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="Logo 批量换色与产品视觉裂变自动化工作台"
+    />
+    <title>Visual Forge · 视觉生产中枢</title>
+    <link rel="stylesheet" href="/assets/styles.css" />
+  </head>
+  <body>
+    <div class="grain" aria-hidden="true"></div>
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="Visual Forge 首页">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 36 36">
+            <path d="M7 26.5 18 5l11 21.5H7Z" />
+            <path d="M13 22h10" />
+            <circle cx="18" cy="16.5" r="2.5" />
+          </svg>
+        </span>
+        <span>
+          <strong>VISUAL FORGE</strong>
+          <small>视觉生产中枢</small>
+        </span>
+      </a>
+      <div class="service-state" id="serviceState">
+        <span class="status-dot"></span>
+        <span>正在连接服务</span>
+      </div>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div>
+          <p class="eyebrow">BATCH PRODUCTION / 01</p>
+          <h1>一套素材，<br /><em>延展全部视觉可能。</em></h1>
+        </div>
+        <p class="hero-copy">
+          从品牌图标换色到商品场景裂变，所有任务进入统一队列，自动保存原图、成品与可追溯清单。
+        </p>
+      </section>
+
+      <div class="mode-tabs" role="tablist" aria-label="生产模式">
+        <button class="mode-tab is-active" data-panel="panel-logo-many" role="tab">
+          <span>01</span>
+          单 Logo · 多色
+        </button>
+        <button class="mode-tab" data-panel="panel-many-logo" role="tab">
+          <span>02</span>
+          单色 · 多 Logo
+        </button>
+        <button class="mode-tab" data-panel="panel-product" role="tab">
+          <span>03</span>
+          单款 · 文生图与裂变
+        </button>
+      </div>
+
+      <section class="workspace">
+        <div class="form-stage">
+          <form
+            class="mode-panel is-active"
+            id="panel-logo-many"
+            data-kind="logo_recolor"
+          >
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">LOGO COLORIZATION</p>
+                <h2>一个标志，全色谱表达</h2>
+              </div>
+              <span class="format-chip">PNG · JPG · WEBP</span>
+            </div>
+
+            <label class="upload-zone" for="logo-many-file">
+              <input
+                type="file"
+                id="logo-many-file"
+                name="files"
+                accept="image/*"
+                data-single
+              />
+              <span class="upload-icon" aria-hidden="true">＋</span>
+              <span class="upload-title" data-file-label>拖入 Logo，或点击选择</span>
+              <span class="upload-note">建议使用透明背景 PNG；白色背景可自动识别</span>
+            </label>
+
+            <div class="field-row">
+              <label class="field field-grow">
+                <span>目标颜色</span>
+                <textarea
+                  name="colors"
+                  rows="2"
+                  placeholder="#111111, #F2E9D8, #D76C52"
+                  required
+                >#111111, #F4EFE6, #D4684F</textarea>
+              </label>
+              <label class="field field-small">
+                <span>背景处理</span>
+                <select name="background">
+                  <option value="auto">自动识别</option>
+                  <option value="true">强制去除</option>
+                  <option value="false">保留原图</option>
+                </select>
+              </label>
+            </div>
+            <div class="color-preview" aria-label="颜色预览">
+              <i style="--swatch: #111111"></i>
+              <i style="--swatch: #F4EFE6"></i>
+              <i style="--swatch: #D4684F"></i>
+              <span>最多 30 个颜色 / 次</span>
+            </div>
+
+            <button class="primary-action" type="submit">
+              <span>开始生成颜色版本</span>
+              <b aria-hidden="true">↗</b>
+            </button>
+          </form>
+
+          <form class="mode-panel" id="panel-many-logo" data-kind="logo_color_batch">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">UNIFIED COLOR SYSTEM</p>
+                <h2>一组标志，统一视觉色彩</h2>
+              </div>
+              <span class="format-chip">MULTI UPLOAD</span>
+            </div>
+
+            <label class="upload-zone" for="many-logo-files">
+              <input
+                type="file"
+                id="many-logo-files"
+                name="files"
+                accept="image/*"
+                multiple
+              />
+              <span class="upload-icon" aria-hidden="true">＋</span>
+              <span class="upload-title" data-file-label>选择多个 Logo 文件</span>
+              <span class="upload-note">每个源文件保留独立输出，单次最多 100 个</span>
+            </label>
+
+            <div class="field-row">
+              <label class="field field-grow">
+                <span>统一目标颜色</span>
+                <input name="color" value="#D4684F" pattern="#?[0-9A-Fa-f]{6}" required />
+              </label>
+              <label class="field field-small">
+                <span>背景处理</span>
+                <select name="background">
+                  <option value="auto">自动识别</option>
+                  <option value="true">强制去除</option>
+                  <option value="false">保留原图</option>
+                </select>
+              </label>
+            </div>
+
+            <button class="primary-action" type="submit">
+              <span>统一应用品牌色</span>
+              <b aria-hidden="true">↗</b>
+            </button>
+          </form>
+
+          <form class="mode-panel" id="panel-product" data-kind="product_generate">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">PRODUCT IMAGE FISSION</p>
+                <h2>一个产品，生成整组场景</h2>
+              </div>
+              <span class="format-chip">TEXT → IMAGE</span>
+            </div>
+
+            <label class="field">
+              <span>产品描述</span>
+              <textarea
+                name="prompt"
+                rows="5"
+                placeholder="例如：极简白色陶瓷咖啡杯，哑光釉面，弧线手柄，精品生活方式品牌，产品外观与比例必须保持一致。"
+                required
+              ></textarea>
+            </label>
+
+            <div class="field-row field-row-three">
+              <label class="field field-small">
+                <span>裂变数量</span>
+                <select name="count">
+                  <option value="2">2 张</option>
+                  <option value="4" selected>4 张</option>
+                  <option value="6">6 张</option>
+                  <option value="8">8 张</option>
+                </select>
+              </label>
+              <label class="field field-small">
+                <span>画面比例</span>
+                <select name="size">
+                  <option value="1024x1024" selected>1 : 1</option>
+                  <option value="1536x1024">3 : 2</option>
+                  <option value="1024x1536">2 : 3</option>
+                </select>
+              </label>
+              <label class="field field-small">
+                <span>生成质量</span>
+                <select name="quality">
+                  <option value="high" selected>高质量</option>
+                  <option value="medium">标准</option>
+                  <option value="low">快速预览</option>
+                </select>
+              </label>
+            </div>
+            <p class="prompt-note">
+              系统将自动组合棚拍、生活方式、材质特写、节日氛围等方向，并锁定产品主体一致性。
+            </p>
+
+            <button class="primary-action" type="submit">
+              <span>生成产品视觉方案</span>
+              <b aria-hidden="true">↗</b>
+            </button>
+          </form>
+        </div>
+
+        <aside class="process-card">
+          <p class="eyebrow">PIPELINE</p>
+          <h3>每次生产都可追踪</h3>
+          <ol>
+            <li><span>01</span><p>素材进入独立任务目录</p></li>
+            <li><span>02</span><p>自动处理并记录参数</p></li>
+            <li><span>03</span><p>输出图片与 JSON / CSV 清单</p></li>
+          </ol>
+          <div class="process-foot">
+            <span>QUEUE</span>
+            <strong>异步 · 重试 · 可恢复</strong>
+          </div>
+        </aside>
+      </section>
+
+      <section class="production">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">PRODUCTION LOG</p>
+            <h2>生产记录</h2>
+          </div>
+          <button class="text-button" id="refreshJobs" type="button">
+            刷新记录
+          </button>
+        </div>
+        <div class="notice" id="notice" role="status" hidden></div>
+        <div class="job-grid" id="jobGrid">
+          <div class="empty-state">
+            <span>VF</span>
+            <p>还没有生产记录</p>
+            <small>从上方选择一个模式开始</small>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <span>VISUAL FORGE / LOCAL WORKSPACE</span>
+      <span>素材与生成记录保存在本机 data 目录</span>
+    </footer>
+
+    <template id="jobTemplate">
+      <article class="job-card">
+        <div class="job-head">
+          <div>
+            <span class="job-kind"></span>
+            <h3 class="job-title"></h3>
+          </div>
+          <span class="job-status"></span>
+        </div>
+        <div class="progress"><i></i></div>
+        <p class="job-message"></p>
+        <div class="job-outputs"></div>
+        <div class="job-foot">
+          <span class="job-time"></span>
+          <a class="job-download" href="#" hidden>下载全部 ↓</a>
+        </div>
+      </article>
+    </template>
+
+    <script src="/assets/app.js" defer></script>
+  </body>
+</html>
+

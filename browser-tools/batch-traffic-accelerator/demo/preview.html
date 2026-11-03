@@ -1,0 +1,332 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>批量流量加速 Demo 预览</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        min-height: 100vh;
+        margin: 0;
+        overflow: hidden;
+        background:
+          radial-gradient(circle at 20% 20%, rgba(106, 81, 255, 0.13), transparent 30%),
+          #edf1f7;
+        color: #202637;
+        font-family: Inter, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      }
+
+      .stage {
+        position: relative;
+        width: 100vw;
+        height: 100vh;
+      }
+
+      .fake-page {
+        position: absolute;
+        inset: 0;
+        padding: 52px 0 0 230px;
+      }
+
+      .fake-sidebar {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        left: 0;
+        width: 210px;
+        padding: 28px 18px;
+        border-right: 1px solid #dde3ed;
+        background: rgba(255, 255, 255, 0.78);
+      }
+
+      .fake-logo {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        margin-bottom: 28px;
+        font-size: 15px;
+        font-weight: 750;
+      }
+
+      .fake-logo span {
+        display: grid;
+        width: 31px;
+        height: 31px;
+        place-items: center;
+        border-radius: 9px;
+        background: #674fff;
+        color: #fff;
+      }
+
+      .fake-nav {
+        display: flex;
+        flex-direction: column;
+        gap: 7px;
+      }
+
+      .fake-nav span {
+        padding: 10px 12px;
+        border-radius: 9px;
+        color: #697486;
+        font-size: 12px;
+      }
+
+      .fake-nav span.active {
+        background: #eeeaff;
+        color: #5d45e8;
+        font-weight: 650;
+      }
+
+      .fake-header {
+        position: absolute;
+        top: 0;
+        right: 0;
+        left: 210px;
+        height: 52px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 28px;
+        border-bottom: 1px solid #dde3ed;
+        background: rgba(255, 255, 255, 0.8);
+        color: #6b7585;
+        font-size: 12px;
+      }
+
+      .fake-header b {
+        color: #293044;
+      }
+
+      .fake-main {
+        width: calc(100vw - 700px);
+        min-width: 560px;
+        max-width: 1100px;
+      }
+
+      .fake-title {
+        margin: 0 0 6px;
+        font-size: 24px;
+        letter-spacing: -0.7px;
+      }
+
+      .fake-subtitle {
+        margin: 0 0 18px;
+        color: #7a8494;
+        font-size: 12px;
+      }
+
+      .fake-metrics {
+        display: grid;
+        margin-bottom: 16px;
+        gap: 12px;
+        grid-template-columns: repeat(4, 1fr);
+      }
+
+      .fake-metric {
+        padding: 15px;
+        border: 1px solid #e0e5ed;
+        border-radius: 12px;
+        background: rgba(255, 255, 255, 0.8);
+      }
+
+      .fake-metric span {
+        color: #818b9b;
+        font-size: 10px;
+      }
+
+      .fake-metric strong {
+        display: block;
+        margin-top: 8px;
+        font-size: 20px;
+      }
+
+      .fake-table {
+        overflow: hidden;
+        border: 1px solid #e0e5ed;
+        border-radius: 12px;
+        background: rgba(255, 255, 255, 0.82);
+      }
+
+      .fake-table-head,
+      .fake-table-row {
+        display: grid;
+        align-items: center;
+        padding: 0 16px;
+        grid-template-columns: 2.1fr 0.8fr 0.8fr 0.8fr 0.9fr;
+      }
+
+      .fake-table-head {
+        height: 39px;
+        border-bottom: 1px solid #e9edf3;
+        color: #8a93a2;
+        font-size: 9px;
+      }
+
+      .fake-table-row {
+        height: 61px;
+        border-bottom: 1px solid #f0f2f6;
+        color: #596273;
+        font-size: 10px;
+      }
+
+      .fake-product {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .fake-thumb {
+        width: 35px;
+        height: 35px;
+        flex: 0 0 35px;
+        border-radius: 7px;
+        background: linear-gradient(145deg, #c7d0dc, #8495a7);
+      }
+
+      .fake-product b {
+        display: block;
+        overflow: hidden;
+        max-width: 260px;
+        margin-bottom: 3px;
+        color: #3f4859;
+        font-weight: 600;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .fake-product small {
+        color: #9aa2af;
+      }
+
+      .fake-action {
+        padding: 5px 9px;
+        border: 1px solid #d8d0ff;
+        border-radius: 6px;
+        background: #f2efff;
+        color: #6047e9;
+        font-size: 9px;
+      }
+
+      .panel-frame {
+        position: absolute;
+        top: 18px;
+        right: 20px;
+        bottom: 18px;
+        width: 420px;
+        overflow: hidden;
+        border: 1px solid rgba(210, 216, 227, 0.96);
+        border-radius: 17px;
+        background: #f5f6fa;
+        box-shadow:
+          0 25px 70px rgba(35, 43, 70, 0.21),
+          0 4px 14px rgba(35, 43, 70, 0.08);
+      }
+
+      .panel-frame::before {
+        position: absolute;
+        z-index: 2;
+        top: 0;
+        right: 0;
+        left: 0;
+        height: 3px;
+        background: linear-gradient(90deg, #5f43f1, #9c69ff);
+        content: "";
+      }
+
+      iframe {
+        width: 100%;
+        height: 100%;
+        border: 0;
+      }
+
+      @media (max-width: 1000px) {
+        .fake-main {
+          opacity: 0.3;
+        }
+
+        .panel-frame {
+          left: 50%;
+          right: auto;
+          transform: translateX(-50%);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="stage">
+      <aside class="fake-sidebar">
+        <div class="fake-logo"><span>T</span> Tengo 跨境电商</div>
+        <nav class="fake-nav">
+          <span>首页</span>
+          <span>选品市场</span>
+          <span>产品采集</span>
+          <span class="active">经营分析</span>
+          <span>流量分析</span>
+          <span>商品表现</span>
+          <span>批量流量加速</span>
+        </nav>
+      </aside>
+      <header class="fake-header">
+        <span><b>经营分析</b> / 流量分析</span>
+        <span>BrightMall · 美国站 ∨</span>
+      </header>
+      <main class="fake-main">
+        <h1 class="fake-title">流量分析</h1>
+        <p class="fake-subtitle">识别低流量商品，通过价格增长策略获取更多曝光与访客</p>
+        <section class="fake-metrics">
+          <div class="fake-metric"><span>商品曝光</span><strong>182,430</strong></div>
+          <div class="fake-metric"><span>商品访客</span><strong>12,804</strong></div>
+          <div class="fake-metric"><span>支付转化率</span><strong>2.84%</strong></div>
+          <div class="fake-metric"><span>待增长商品</span><strong>18</strong></div>
+        </section>
+        <section class="fake-table">
+          <div class="fake-table-head">
+            <span>商品</span><span>曝光</span><span>访客</span><span>转化率</span><span>操作</span>
+          </div>
+          <div class="fake-table-row">
+            <div class="fake-product">
+              <div class="fake-thumb"></div>
+              <div><b>Men's lightweight quarter zip fleece pullover</b><small>BM-QZ-104</small></div>
+            </div>
+            <span>1,680</span><span>124</span><span>2.8%</span><span class="fake-action">立即增长</span>
+          </div>
+          <div class="fake-table-row">
+            <div class="fake-product">
+              <div class="fake-thumb"></div>
+              <div><b>Men's thermal quarter zip fleece sweatshirt</b><small>BM-QZ-117</small></div>
+            </div>
+            <span>2,360</span><span>184</span><span>3.4%</span><span class="fake-action">立即增长</span>
+          </div>
+          <div class="fake-table-row">
+            <div class="fake-product">
+              <div class="fake-thumb"></div>
+              <div><b>Men's half zip polar fleece pullover</b><small>BM-QZ-128</small></div>
+            </div>
+            <span>980</span><span>72</span><span>2.1%</span><span class="fake-action">立即增长</span>
+          </div>
+          <div class="fake-table-row">
+            <div class="fake-product">
+              <div class="fake-thumb"></div>
+              <div><b>Men's quarter zip mock neck sweatshirt</b><small>BM-QZ-136</small></div>
+            </div>
+            <span>520</span><span>31</span><span>1.5%</span><span class="fake-action">立即增长</span>
+          </div>
+          <div class="fake-table-row">
+            <div class="fake-product">
+              <div class="fake-thumb"></div>
+              <div><b>Men's fuzzy fleece half zip sweatshirt</b><small>BM-QZ-159</small></div>
+            </div>
+            <span>2,900</span><span>233</span><span>4.1%</span><span class="fake-action">立即增长</span>
+          </div>
+        </section>
+      </main>
+      <aside class="panel-frame">
+        <iframe src="../sidepanel/panel.html" title="批量流量加速插件"></iframe>
+      </aside>
+    </div>
+  </body>
+</html>

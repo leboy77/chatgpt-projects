@@ -4,9 +4,12 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 .mypy_cache/
+.research-artifacts/
 
 # Local browser profiles and temporary test runs
 .tmp-*/
+.chrome-*/
+.edge-*/
 test-artifacts/
 _test_artifacts/
 probes/shots/
@@ -17,6 +20,11 @@ test-downloads/
 outputs/
 tabs_backup.json
 *.log
+*.session.json
+*.sqlite3
+*.sqlite3-shm
+*.sqlite3-wal
+*.exe
 
 # Local secrets
 .env

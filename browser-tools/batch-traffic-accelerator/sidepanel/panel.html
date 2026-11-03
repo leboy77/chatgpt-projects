@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>批量流量加速</title>
+    <link rel="stylesheet" href="./panel.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="app-header">
+        <div class="brand-row">
+          <div class="brand">
+            <span class="brand-mark" aria-hidden="true">↗</span>
+            <div>
+              <h1>批量流量加速</h1>
+              <p>TEMU 流量分析批处理助手</p>
+            </div>
+          </div>
+          <span class="demo-badge">DEMO</span>
+        </div>
+
+        <section class="context-card">
+          <div class="context-main">
+            <div class="store-avatar">B</div>
+            <div class="context-copy">
+              <strong>BrightMall</strong>
+              <span>美国站 · 2026-10-27 至 2026-11-02</span>
+            </div>
+            <button class="icon-button" id="refreshButton" type="button" title="同步页面">
+              ↻
+            </button>
+          </div>
+          <div class="context-meta">
+            <span class="live-dot"></span>
+            <span id="sourceLabel">演示数据已就绪</span>
+            <span class="meta-divider"></span>
+            <span id="pageState">未连接流量分析页</span>
+          </div>
+        </section>
+      </header>
+
+      <nav class="step-tabs" aria-label="流程步骤">
+        <button class="step-tab is-active" data-tab="config" type="button">
+          <span>1</span>
+          配置
+        </button>
+        <button class="step-tab" data-tab="preview" type="button">
+          <span>2</span>
+          预演
+          <em id="previewCount">18</em>
+        </button>
+        <button class="step-tab" data-tab="result" type="button">
+          <span>3</span>
+          记录
+        </button>
+      </nav>
+
+      <main class="content">
+        <section class="tab-panel is-active" data-panel="config">
+          <section class="section-card">
+            <div class="section-title-row">
+              <div>
+                <span class="eyebrow">增长策略</span>
+                <h2>先定规则，再选商品</h2>
+              </div>
+              <span class="safe-chip">仅演示</span>
+            </div>
+
+            <label class="field-label" for="preset">策略模板</label>
+            <div class="select-wrap">
+              <select id="preset">
+                <option value="balanced">低流量高毛利 · 推荐</option>
+                <option value="clearance">清库存 · 放宽毛利</option>
+                <option value="custom">自定义规则</option>
+              </select>
+            </div>
+
+            <div class="field-grid two-column">
+              <label class="field">
+                <span class="field-label">目标让价</span>
+                <span class="input-affix">
+                  <input id="discountRate" type="number" min="1" max="40" step="1" value="8" />
+                  <b>%</b>
+                </span>
+              </label>
+              <label class="field">
+                <span class="field-label">每批商品</span>
+                <span class="input-affix">
+                  <input id="batchSize" type="number" min="1" max="50" step="1" value="5" />
+                  <b>个</b>
+                </span>
+              </label>
+            </div>
+
+            <div class="strategy-note">
+              <span class="note-icon">i</span>
+              <p>预演时的预计价格 = 当前售价 × (1 − 让价比例)，最终仍以 TEMU 可申报区间为准。</p>
+            </div>
+          </section>
+
+          <section class="section-card">
+            <div class="section-heading">
+              <div>
+                <span class="eyebrow">筛选条件</span>
+                <h2>只处理值得增长的商品</h2>
+              </div>
+            </div>
+
+            <label class="search-box">
+              <span>⌕</span>
+              <input id="keyword" type="search" placeholder="搜索商品名称、SKU 或商品 ID" />
+            </label>
+
+            <div class="field-grid two-column">
+              <label class="field">
+                <span class="field-label">最低曝光</span>
+                <input id="minExposure" type="number" min="0" value="300" />
+              </label>
+              <label class="field">
+                <span class="field-label">最低毛利</span>
+                <span class="input-affix">
+                  <input id="minMargin" type="number" min="-100" max="100" value="18" />
+                  <b>%</b>
+                </span>
+              </label>
+              <label class="field">
+                <span class="field-label">最高售价</span>
+                <span class="input-affix prefix">
+                  <b>¥</b>
+                  <input id="maxPrice" type="number" min="0" value="80" />
+                </span>
+              </label>
+              <label class="field">
+                <span class="field-label">最低转化</span>
+                <span class="input-affix">
+                  <input id="minConversion" type="number" min="0" max="100" step="0.1" value="1.2" />
+                  <b>%</b>
+                </span>
+              </label>
+            </div>
+
+            <div class="check-list">
+              <label class="check-row">
+                <input id="excludeActive" type="checkbox" checked />
+                <span class="check-ui"></span>
+                <span>
+                  <strong>排除加速中的商品</strong>
+                  <small>避免重复提交和任务冲突</small>
+                </span>
+              </label>
+              <label class="check-row">
+                <input id="excludeOutOfStock" type="checkbox" checked />
+                <span class="check-ui"></span>
+                <span>
+                  <strong>排除无库存商品</strong>
+                  <small>库存为 0 时不创建加速任务</small>
+                </span>
+              </label>
+            </div>
+          </section>
+        </section>
+
+        <section class="tab-panel" data-panel="preview">
+          <div class="metric-grid">
+            <article class="metric-card primary">
+              <span>命中商品</span>
+              <strong id="hitCount">0</strong>
+              <small>待提交</small>
+            </article>
+            <article class="metric-card">
+              <span>已排除</span>
+              <strong id="excludedCount">0</strong>
+              <small>规则过滤</small>
+            </article>
+            <article class="metric-card">
+              <span>预计平均毛利</span>
+              <strong id="averageMargin">0%</strong>
+              <small>让价后</small>
+            </article>
+            <article class="metric-card">
+              <span>预计让价总额</span>
+              <strong id="totalDiscount">¥0</strong>
+              <small>单件口径</small>
+            </article>
+          </div>
+
+          <section class="preview-notice">
+            <span>✓</span>
+            <p>这是预演结果，不会修改 TEMU 商品价格。请先核对命中商品和毛利底线。</p>
+          </section>
+
+          <div class="list-toolbar">
+            <div>
+              <h2>预演清单</h2>
+              <p>按预计毛利从高到低排序</p>
+            </div>
+            <div class="filter-switch">
+              <button class="mini-filter is-active" data-filter="included" type="button">命中</button>
+              <button class="mini-filter" data-filter="all" type="button">全部</button>
+            </div>
+          </div>
+
+          <div class="product-list" id="productList"></div>
+        </section>
+
+        <section class="tab-panel" data-panel="result">
+          <section class="run-card" id="runCard">
+            <div class="run-empty" id="runEmpty">
+              <span class="run-empty-icon">◎</span>
+              <h2>还没有运行记录</h2>
+              <p>完成预演后可启动一次模拟执行，查看进度、失败和重试状态。</p>
+              <button type="button" class="text-button" data-go-tab="config">去配置规则 →</button>
+            </div>
+
+            <div class="run-active is-hidden" id="runActive">
+              <div class="run-heading">
+                <div>
+                  <span class="eyebrow" id="runStatusEyebrow">正在执行</span>
+                  <h2 id="runTitle">演示加速任务</h2>
+                </div>
+                <strong id="runPercent">0%</strong>
+              </div>
+              <div class="progress-track">
+                <span id="runProgress"></span>
+              </div>
+              <div class="run-stats">
+                <span>已处理 <b id="processedCount">0</b></span>
+                <span>成功 <b class="success" id="successCount">0</b></span>
+                <span>失败 <b class="danger" id="failedCount">0</b></span>
+                <span>跳过 <b id="skippedCount">0</b></span>
+              </div>
+              <p class="run-message" id="runMessage">正在等待页面执行结果</p>
+            </div>
+          </section>
+
+          <div class="list-toolbar result-toolbar">
+            <div>
+              <h2>执行明细</h2>
+              <p>每一项保存独立结果，便于失败重试</p>
+            </div>
+            <button class="mini-button" id="exportButton" type="button">导出 CSV</button>
+          </div>
+          <div class="result-list" id="resultList"></div>
+        </section>
+      </main>
+
+      <footer class="action-bar">
+        <div class="action-summary">
+          <span id="actionHint">按当前规则生成预演</span>
+          <strong id="actionCount">18 个商品</strong>
+        </div>
+        <button class="primary-button" id="primaryButton" type="button">
+          生成预演
+          <span>→</span>
+        </button>
+      </footer>
+    </div>
+
+    <div class="toast" id="toast" role="status"></div>
+    <script src="./panel.js"></script>
+  </body>
+</html>

@@ -1,0 +1,54 @@
+{
+  "manifest_version": 3,
+  "name": "批量流量加速 Demo",
+  "version": "0.1.0",
+  "description": "TEMU 流量分析批量增长预演工具：规则筛选、影响预估、分批执行与结果记录。",
+  "minimum_chrome_version": "116",
+  "icons": {
+    "16": "assets/icon16.png",
+    "48": "assets/icon48.png",
+    "128": "assets/icon128.png"
+  },
+  "permissions": [
+    "sidePanel",
+    "storage",
+    "tabs",
+    "scripting",
+    "alarms"
+  ],
+  "host_permissions": [
+    "https://agentseller.temu.com/*",
+    "https://agentseller-eu.temu.com/*",
+    "https://seller.kuajingmaihuo.com/*",
+    "https://allinone.uban360.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "打开批量流量加速助手",
+    "default_icon": {
+      "16": "assets/icon16.png",
+      "48": "assets/icon48.png",
+      "128": "assets/icon128.png"
+    }
+  },
+  "side_panel": {
+    "default_path": "sidepanel/panel.html"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://agentseller.temu.com/*",
+        "https://agentseller-eu.temu.com/*",
+        "https://seller.kuajingmaihuo.com/*",
+        "https://allinone.uban360.com/*"
+      ],
+      "js": [
+        "content/content.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ]
+}

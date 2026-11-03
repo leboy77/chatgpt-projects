@@ -1,0 +1,75 @@
+{
+  "manifest_version": 3,
+  "name": "Temu 下架与主图归档",
+  "version": "2.6.0",
+  "description": "按 SPU 查询 Temu 商品，自动保存主图并申请下架。",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA6JWLFKu+t3XTeWDRVLgxUfM6ca15GkTe/0Sbh+DsYn1IXZXmszf29PrpN883rM4QDuVOrbQPvJQJR16KYL0uEjQ5O8b/uyZy486EYgH4X/JHDUiN07amLzUBnejr1MbhNc+7qHSwEfcxQrT/T6hyzxqacH/UrDw0oILZ0RUGbJBZCrTItuHGO9sCGN4frVy9YU+PYd4o12hZFT1b0q4QlTlhMuGSmmz0tDOUfupMHrBg9gj19PxGhiin7EhR3PM0c+WmWHA1csa9yj6Bvx8XsHsAPLLgvRGPi1Y0wDQbGJlj2I4z+hvmdK7/r8TWQlqUikX3K61US7SEF4N6CIJLgwIDAQAB",
+  "minimum_chrome_version": "114",
+  "permissions": [
+    "storage",
+    "tabs",
+    "scripting",
+    "downloads",
+    "sidePanel",
+    "unlimitedStorage"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1:54345/*",
+    "https://agentseller.temu.com/*",
+    "https://agentseller-eu.temu.com/*",
+    "https://*.kwcdn.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "Temu 下架与主图归档",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://agentseller.temu.com/*",
+        "https://agentseller-eu.temu.com/*"
+      ],
+      "js": [
+        "vendor/xlsx.full.min.js",
+        "shared.js",
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "sidepanel.html",
+        "sidepanel.css",
+        "sidepanel.js",
+        "shared.js",
+        "page-bridge.js",
+        "vendor/xlsx.full.min.js",
+        "templates/*",
+        "icons/*"
+      ],
+      "matches": [
+        "https://agentseller.temu.com/*",
+        "https://agentseller-eu.temu.com/*"
+      ]
+    }
+  ]
+}

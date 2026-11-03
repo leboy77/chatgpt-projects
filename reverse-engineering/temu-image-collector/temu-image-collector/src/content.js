@@ -22,9 +22,24 @@
   globalThis.__TEC_TEMU_IMAGE_COLLECTOR__ = true;
 
   const PANEL_ID = "tec-panel";
+  const PANEL_POSITION_KEY = "tecPanelPosition";
+  const IMAGE_FOLDER = "图片";
   const CARD_SELECTOR = '[data-tooltip^="goodContainer-"]';
   const CARD_IMAGE_SELECTOR =
     "img.goods-img-external,.goods-img-external img,img[data-cui-image]";
+  const GOODS_LIST_SELECTOR = ".js-goods-list";
+  const RECOMMENDATION_HEADINGS = new Set(
+    [
+      "top picks for you",
+      "top picks",
+      "recommended for you",
+      "recommendations for you",
+      "for you",
+      "为你推荐",
+      "猜你喜欢",
+      "推荐商品",
+    ].map((value) => value.toLocaleLowerCase()),
+  );
   const QUICK_LOOK_TEXT = /^(quick\s*look|快速查看)$/i;
   const MODE_META = {
     simple: { label: "简单采集", description: "读取每张商品卡片的当前首图" },
@@ -41,6 +56,9 @@
     collectTitle: true,
     lastHref: location.href,
     lastLog: "",
+    excludedCount: 0,
+    excludedReasonCounts: { recommendation: 0, advertisement: 0 },
+    excludedProductIds: new Set(),
   };
 
   const sleep = (ms) =>
@@ -125,6 +143,47 @@
       style.visibility !== "hidden" &&
       Number(style.opacity) !== 0
     );
+  }
+
+  function findRecommendationSections() {
+    const sections = new Set();
+    for (const section of document.querySelectorAll(GOODS_LIST_SELECTOR)) {
+      const hasRecommendationHeading = [...section.children].some((child) => {
+        if (child.querySelector(CARD_SELECTOR)) return false;
+        return RECOMMENDATION_HEADINGS.has(
+          normalizeText(child.textContent).toLocaleLowerCase(),
+        );
+      });
+      if (hasRecommendationHeading) sections.add(section);
+    }
+    return sections;
+  }
+
+  function hasAdvertisementBadge(card) {
+    return [...card.querySelectorAll("div,span")].some((element) => {
+      if (normalizeText(element.textContent).toUpperCase() !== "AD") {
+        return false;
+      }
+      const rect = element.getBoundingClientRect();
+      return (
+        rect.width >= 8 &&
+        rect.width <= 80 &&
+        rect.height >= 8 &&
+        rect.height <= 60
+      );
+    });
+  }
+
+  function productCardExclusion(card, recommendationSections) {
+    const section = card.closest(GOODS_LIST_SELECTOR);
+    if (
+      section &&
+      recommendationSections.has(section) &&
+      section.querySelectorAll(CARD_SELECTOR).length
+    ) {
+      return "recommendation";
+    }
+    return hasAdvertisementBadge(card) ? "advertisement" : "";
   }
 
   function isHttpUrl(value) {
@@ -241,7 +300,10 @@
 
   function selectedCountText() {
     const selectable = document.querySelectorAll(".tec-select-button").length;
-    return `可采集 ${selectable} 个 · 已选 ${state.selected.size} 个`;
+    const ignored = state.excludedCount
+      ? ` · 已忽略推荐/广告 ${state.excludedCount} 个`
+      : "";
+    return `可采集 ${selectable} 个 · 已选 ${state.selected.size} 个${ignored}`;
   }
 
   function refreshPanelSummary() {
@@ -251,10 +313,13 @@
         const job = state.pausedJob;
         const completed = (job.completedProductIds || []).length;
         const failed = job.failedProductIds?.length || 0;
+        const ignored = state.excludedCount
+          ? ` · 已忽略推荐/广告 ${state.excludedCount}`
+          : "";
         summary.textContent = `任务：完成 ${completed}/${job.products.length} · 待处理 ${Math.max(
           0,
           job.products.length - completed,
-        )} · 失败 ${failed}`;
+        )} · 失败 ${failed}${ignored}`;
       } else {
         summary.textContent = selectedCountText();
       }
@@ -266,6 +331,7 @@
         ? pausedJobButtonLabel()
         : "开始采集";
     }
+    refreshRowToggleLabels();
   }
 
   function pausedJobButtonLabel(job = state.pausedJob) {
@@ -318,6 +384,105 @@
     button.disabled = state.running || Boolean(state.pausedJob);
   }
 
+  function visualCardRows() {
+    const entries = [...document.querySelectorAll(".tec-select-button")]
+      .map((button) => {
+        const card = button.closest(CARD_SELECTOR);
+        if (!card) return null;
+        const rect = card.getBoundingClientRect();
+        const id = button.dataset.tecId;
+        if (!id) return null;
+        return { card, id, left: rect.left, top: rect.top };
+      })
+      .filter(Boolean)
+      .sort((left, right) => left.top - right.top || left.left - right.left);
+
+    const rows = [];
+    for (const entry of entries) {
+      const row = rows.find(
+        (candidate) => Math.abs(candidate.top - entry.top) <= 12,
+      );
+      if (row) {
+        row.cards.push(entry);
+      } else {
+        rows.push({ top: entry.top, cards: [entry] });
+      }
+    }
+    for (const row of rows) {
+      row.cards.sort((left, right) => left.left - right.left);
+    }
+    return rows;
+  }
+
+  function refreshRowToggleLabels() {
+    for (const button of document.querySelectorAll(".tec-row-toggle-button")) {
+      let rowIds = [];
+      try {
+        rowIds = JSON.parse(button.dataset.tecRowIds || "[]");
+      } catch {
+        rowIds = [];
+      }
+      const hasSelected = rowIds.some((id) => state.selected.has(id));
+      button.textContent = hasSelected ? "本排不选" : "本排全选";
+      button.classList.toggle("tec-row-has-selected", hasSelected);
+      button.title = hasSelected
+        ? "取消这一排所有已选商品"
+        : "选择这一排所有可采集商品";
+      button.disabled = state.running || Boolean(state.pausedJob);
+    }
+  }
+
+  function injectRowToggleButtons() {
+    const currentButtons = new Set();
+    for (const row of visualCardRows()) {
+      if (row.cards.length < 2) continue;
+      const anchorCard = row.cards[row.cards.length - 1].card;
+      let button = anchorCard.querySelector(
+        ":scope > .tec-row-toggle-button",
+      );
+      if (!button) {
+        button = document.createElement("button");
+        button.type = "button";
+        button.className = "tec-row-toggle-button";
+        button.addEventListener("click", (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          if (state.running || state.pausedJob) return;
+
+          let rowIds = [];
+          try {
+            rowIds = JSON.parse(button.dataset.tecRowIds || "[]");
+          } catch {
+            rowIds = [];
+          }
+          if (!rowIds.length) return;
+          const rowIdSet = new Set(rowIds);
+          const hasSelected = rowIds.some((id) => state.selected.has(id));
+          if (hasSelected) {
+            for (const id of rowIds) state.selected.delete(id);
+          } else {
+            for (const card of document.querySelectorAll(CARD_SELECTOR)) {
+              const info = extractCardInfo(card);
+              if (info && rowIdSet.has(info.id)) {
+                state.selected.set(info.id, info);
+              }
+            }
+          }
+          scanCards();
+        });
+        anchorCard.appendChild(button);
+      }
+      button.dataset.tecRowIds = JSON.stringify(
+        row.cards.map((entry) => entry.id),
+      );
+      currentButtons.add(button);
+    }
+
+    for (const button of document.querySelectorAll(".tec-row-toggle-button")) {
+      if (!currentButtons.has(button)) button.remove();
+    }
+  }
+
   function scanCards() {
     if (location.href !== state.lastHref) {
       state.lastHref = location.href;
@@ -325,14 +490,43 @@
       refreshPanelSummary();
     }
 
+    const recommendationSections = findRecommendationSections();
+    const excludedProductIds = new Set();
+    const collectableProductIds = new Set();
+    const excludedReasonCounts = { recommendation: 0, advertisement: 0 };
+    let excludedCount = 0;
+
     for (const card of document.querySelectorAll(CARD_SELECTOR)) {
+      const id = extractProductId(card);
+      const exclusion = productCardExclusion(card, recommendationSections);
+      if (exclusion) {
+        excludedCount += 1;
+        excludedReasonCounts[exclusion] += 1;
+        if (id) excludedProductIds.add(id);
+        card.querySelector(":scope > .tec-select-button")?.remove();
+        card.querySelector(":scope > .tec-row-toggle-button")?.remove();
+        card.classList.remove("tec-card-host");
+        state.cards.delete(card);
+        continue;
+      }
       const info = extractCardInfo(card);
       if (!info) continue;
+      collectableProductIds.add(info.id);
       state.cards.set(card, info);
       if (state.selected.has(info.id)) {
         state.selected.set(info.id, { ...state.selected.get(info.id), ...info });
       }
       injectCardButton(card, info);
+    }
+    injectRowToggleButtons();
+
+    state.excludedCount = excludedCount;
+    state.excludedReasonCounts = excludedReasonCounts;
+    state.excludedProductIds = new Set(
+      [...excludedProductIds].filter((id) => !collectableProductIds.has(id)),
+    );
+    for (const productId of state.excludedProductIds) {
+      state.selected.delete(productId);
     }
     refreshPanelSummary();
   }
@@ -342,7 +536,7 @@
     const panel = document.createElement("section");
     panel.id = PANEL_ID;
     panel.innerHTML = `
-      <div class="tec-panel-head">
+      <div class="tec-panel-head" title="按住拖动，双击恢复右下角位置">
         <span class="tec-panel-title">Temu 商品首图采集器</span>
         <button type="button" class="tec-icon-button" id="tec-toggle-panel" title="最小化">—</button>
       </div>
@@ -382,10 +576,15 @@
 
     panel
       .querySelector("#tec-toggle-panel")
-      .addEventListener("click", () => panel.classList.toggle("tec-minimized"));
+      .addEventListener("click", () => {
+        panel.classList.toggle("tec-minimized");
+        requestAnimationFrame(() => clampPanelToViewport(panel));
+      });
     panel.querySelector("#tec-select-all").addEventListener("click", () => {
       if (state.running) return;
+      const recommendationSections = findRecommendationSections();
       for (const card of document.querySelectorAll(CARD_SELECTOR)) {
+        if (productCardExclusion(card, recommendationSections)) continue;
         const info = extractCardInfo(card);
         if (info) state.selected.set(info.id, info);
       }
@@ -455,6 +654,102 @@
       document.documentElement.dataset.tecSaveDirectory || "",
       document.documentElement.dataset.tecSaveDirectoryStatus || "default",
     );
+    setupPanelDragging(panel);
+  }
+
+  function clampPanelToViewport(panel) {
+    if (!panel?.style.left || !panel?.style.top) return null;
+    const margin = 8;
+    const rect = panel.getBoundingClientRect();
+    const maxX = Math.max(margin, window.innerWidth - rect.width - margin);
+    const maxY = Math.max(margin, window.innerHeight - rect.height - margin);
+    const x = Math.min(maxX, Math.max(margin, Number.parseFloat(panel.style.left)));
+    const y = Math.min(maxY, Math.max(margin, Number.parseFloat(panel.style.top)));
+    panel.style.left = `${x}px`;
+    panel.style.top = `${y}px`;
+    panel.style.right = "auto";
+    panel.style.bottom = "auto";
+    return { x, y };
+  }
+
+  function setupPanelDragging(panel) {
+    const header = panel.querySelector(".tec-panel-head");
+    let dragging = false;
+    let pointerId = null;
+    let offsetX = 0;
+    let offsetY = 0;
+
+    const savePosition = () => {
+      const position = clampPanelToViewport(panel);
+      if (position) chrome.storage.local.set({ [PANEL_POSITION_KEY]: position });
+    };
+
+    storageGet(PANEL_POSITION_KEY).then((position) => {
+      if (!position || !Number.isFinite(position.x) || !Number.isFinite(position.y)) {
+        return;
+      }
+      panel.style.left = `${position.x}px`;
+      panel.style.top = `${position.y}px`;
+      panel.style.right = "auto";
+      panel.style.bottom = "auto";
+      clampPanelToViewport(panel);
+    });
+
+    header.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0 || event.target.closest("button,input,select,a")) {
+        return;
+      }
+      const rect = panel.getBoundingClientRect();
+      dragging = true;
+      pointerId = event.pointerId;
+      offsetX = event.clientX - rect.left;
+      offsetY = event.clientY - rect.top;
+      panel.style.left = `${rect.left}px`;
+      panel.style.top = `${rect.top}px`;
+      panel.style.right = "auto";
+      panel.style.bottom = "auto";
+      header.setPointerCapture(pointerId);
+      document.body.style.userSelect = "none";
+      event.preventDefault();
+    });
+
+    header.addEventListener("pointermove", (event) => {
+      if (!dragging || event.pointerId !== pointerId) return;
+      const rect = panel.getBoundingClientRect();
+      const margin = 8;
+      const maxX = Math.max(margin, window.innerWidth - rect.width - margin);
+      const maxY = Math.max(margin, window.innerHeight - rect.height - margin);
+      const x = Math.min(maxX, Math.max(margin, event.clientX - offsetX));
+      const y = Math.min(maxY, Math.max(margin, event.clientY - offsetY));
+      panel.style.left = `${x}px`;
+      panel.style.top = `${y}px`;
+      event.preventDefault();
+    });
+
+    const finishDrag = (event) => {
+      if (!dragging || (event && event.pointerId !== pointerId)) return;
+      dragging = false;
+      if (header.hasPointerCapture(pointerId)) {
+        header.releasePointerCapture(pointerId);
+      }
+      pointerId = null;
+      document.body.style.userSelect = "";
+      savePosition();
+    };
+
+    header.addEventListener("pointerup", finishDrag);
+    header.addEventListener("pointercancel", finishDrag);
+    header.addEventListener("dblclick", (event) => {
+      if (event.target.closest("button,input,select,a")) return;
+      panel.style.left = "";
+      panel.style.top = "";
+      panel.style.right = "";
+      panel.style.bottom = "";
+      chrome.storage.local.set({ [PANEL_POSITION_KEY]: null });
+    });
+    window.addEventListener("resize", () => {
+      requestAnimationFrame(() => clampPanelToViewport(panel));
+    });
   }
 
   async function restoreActiveJob() {
@@ -554,6 +849,10 @@
     for (const button of document.querySelectorAll(".tec-select-button")) {
       button.disabled = running || hasPausedJob;
     }
+    for (const button of document.querySelectorAll(".tec-row-toggle-button")) {
+      button.disabled = running || hasPausedJob;
+    }
+    refreshRowToggleLabels();
   }
 
   function findQuickLookControl(card) {
@@ -986,14 +1285,16 @@
   }
 
   function selectedProducts() {
-    return [...state.selected.values()].map((product) => {
-      const liveCard = [...document.querySelectorAll(CARD_SELECTOR)].find(
-        (card) => extractProductId(card) === product.id,
-      );
-      if (!liveCard) return product;
-      const live = extractCardInfo(liveCard);
-      return live ? { ...product, ...live } : product;
-    });
+    return [...state.selected.values()]
+      .filter((product) => !state.excludedProductIds.has(product.id))
+      .map((product) => {
+        const liveCard = [...document.querySelectorAll(CARD_SELECTOR)].find(
+          (card) => extractProductId(card) === product.id,
+        );
+        if (!liveCard) return product;
+        const live = extractCardInfo(liveCard);
+        return live ? { ...product, ...live } : product;
+      });
   }
 
   function addAsset(
@@ -1012,11 +1313,13 @@
     const safeColor = safeSegment(color.name, `色值${index + 1}`, 50);
     let relativeBase;
     if (fullMode) {
-      relativeBase = `${productFolder}/${safeColor}/${pad2(index + 1)}`;
+      relativeBase = `${IMAGE_FOLDER}/${productFolder}/${safeColor}/${pad2(
+        index + 1,
+      )}`;
     } else if (color.name === "默认") {
-      relativeBase = `${product.id}${titleSegment}_首图`;
+      relativeBase = `${IMAGE_FOLDER}/${product.id}${titleSegment}_首图`;
     } else {
-      relativeBase = `${product.id}${titleSegment}_${safeColor}_首图`;
+      relativeBase = `${IMAGE_FOLDER}/${product.id}${titleSegment}_${safeColor}_首图`;
     }
     let uniqueBase = relativeBase;
     let suffix = 2;
@@ -1332,9 +1635,33 @@
     if (state.running) return;
     const meta = MODE_META[mode];
     if (!meta) return;
-    const products = existingJob ? existingJob.products || [] : selectedProducts();
+    scanCards();
+    let products = existingJob ? existingJob.products || [] : selectedProducts();
+    if (existingJob) {
+      products = products.filter(
+        (product) => !state.excludedProductIds.has(product.id),
+      );
+      existingJob.products = products;
+      existingJob.completedProductIds = (
+        existingJob.completedProductIds || []
+      ).filter((productId) => !state.excludedProductIds.has(productId));
+      existingJob.failedProductIds = (
+        existingJob.failedProductIds || []
+      ).filter((productId) => !state.excludedProductIds.has(productId));
+      existingJob.partialProductIds = (
+        existingJob.partialProductIds || []
+      ).filter((productId) => !state.excludedProductIds.has(productId));
+      for (const productId of state.excludedProductIds) {
+        delete existingJob.captures?.[productId];
+      }
+    }
     if (!products.length) {
-      setProgress(0, "请先选择商品");
+      setProgress(
+        0,
+        existingJob
+          ? "当前任务没有可继续采集的商品"
+          : "请先选择商品（推荐区和广告商品已自动忽略）",
+      );
       return;
     }
 
@@ -1709,15 +2036,31 @@
         const outputProductIds = new Set(
           assets.map((asset) => asset.productId),
         );
-        const titleLines = products
-          .filter((product) => outputProductIds.has(product.id))
-          .map((product) => `${product.id}\t${product.title || ""}`)
-          .join("\r\n");
-        if (titleLines) {
-          zip.file(
-            `${rootFolder}/商品标题.txt`,
-            `\uFEFF${titleLines}\r\n`,
-          );
+        const seenProductIds = new Set();
+        const titleRows = products
+          .filter((product) => {
+            if (
+              !outputProductIds.has(product.id) ||
+              seenProductIds.has(product.id)
+            ) {
+              return false;
+            }
+            seenProductIds.add(product.id);
+            return true;
+          })
+          .map((product) => ({ title: product.title || "" }));
+        if (titleRows.length) {
+          try {
+            const titleWorkbook =
+              await globalThis.TecTitleWorkbook.createBlob(titleRows);
+            zip.file(`${rootFolder}/商品标题.xlsx`, titleWorkbook);
+          } catch (error) {
+            addWarning({
+              type: "title-workbook",
+              message: `商品标题.xlsx 生成失败：${error.message || error}`,
+            });
+            appendLog(`商品标题.xlsx 生成失败：${error.message || error}`);
+          }
         }
       }
       setProgress(93, `${meta.label}：正在生成 ZIP`);

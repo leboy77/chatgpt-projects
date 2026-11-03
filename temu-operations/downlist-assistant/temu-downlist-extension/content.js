@@ -26,6 +26,8 @@
 
     if (message.type === "searchAndExtract") {
       task = searchAndExtract(message);
+    } else if (message.type === "deletePendingSpu") {
+      task = deletePendingSpu(message);
     } else if (message.type === "downlistSkc") {
       task = downlistSkc(message);
     } else if (message.type === "testDownlistForm") {
@@ -331,6 +333,27 @@
     return images[0]?.source || "";
   }
 
+  function extractFirstCarouselImage(row, spu, skc) {
+    const documentRow = allElements().find(
+      (element) =>
+        element.matches?.("tr") &&
+        isVisible(element) &&
+        new RegExp(`SPU[：:]\\s*${spu}(?!\\d)`).test(normalizeText(element.innerText)) &&
+        normalizeText(element.innerText).includes(String(skc)) &&
+        normalizeText(element.innerText).includes("轮播图-")
+    );
+    const scope = documentRow || row.closest?.("tr") || row;
+    const images = [...scope.querySelectorAll("img")].filter((candidate) => {
+        const source = candidate.currentSrc || candidate.src || "";
+        return isVisible(candidate) && /img\d*\.kwcdn\.com\/product\//.test(source);
+      });
+    const carouselImage =
+      images.find(
+        (image) => !image.closest('[class*="hooks_productInfo"]')
+      ) || images[1] || null;
+    return carouselImage?.currentSrc || carouselImage?.src || "";
+  }
+
   function extractReactRecord(row, expectedId) {
     if (!row) return null;
     const nodes = [row, ...row.querySelectorAll("*")];
@@ -441,6 +464,7 @@
     id,
     spuId,
     skc,
+    preferCarouselFirst = false,
     timeoutMs = 22000
   }) {
     const expectedType = normalizeText(queryType || (spuId ? "SPU" : "SKC")).toUpperCase();
@@ -496,11 +520,26 @@
     const pageSkc =
       rowText.match(/货品SKC[：:]\s*(\d+)/)?.[1] || "";
     const bridgeRecord = await requestPageRecord(expectedType, cleanId);
-    const mediaOutcome = bridgeRecord?.mainUrl
+    if (preferCarouselFirst) {
+      const targetRow = activeRow.closest?.("tr") || activeRow;
+      targetRow.scrollIntoView?.({ block: "center", inline: "center" });
+      await sleep(500);
+    }
+    const carouselImage = preferCarouselFirst
+      ? bridgeRecord?.productImages?.[0] ||
+        await waitFor(
+          () => extractFirstCarouselImage(activeRow, spu, pageSkc),
+          7000,
+          180
+        )
+      : "";
+    const bridgeImageUrl = carouselImage || bridgeRecord?.mainUrl || "";
+    const mediaOutcome = bridgeImageUrl
       ? {
           row: activeRow,
           record: bridgeRecord,
-          url: stripImageQuery(bridgeRecord.mainUrl)
+          url: stripImageQuery(bridgeImageUrl),
+          source: carouselImage ? "carousel" : "main"
         }
       : await waitFor(
       () => {
@@ -510,12 +549,20 @@
           latestRow,
           expectedType === "SPU" ? cleanId : spu
         );
-        const url = latestRecord?.mainUrl || extractMainImage(latestRow);
+        const latestCarouselImage = preferCarouselFirst
+          ? latestRecord?.productImages?.[0] ||
+            extractFirstCarouselImage(latestRow, spu, pageSkc)
+          : "";
+        const url =
+          latestCarouselImage ||
+          latestRecord?.mainUrl ||
+          extractMainImage(latestRow);
         return url
           ? {
               row: latestRow,
               record: latestRecord,
-              url: stripImageQuery(url)
+              url: stripImageQuery(url),
+              source: latestCarouselImage ? "carousel" : "main"
             }
           : null;
       },
@@ -524,10 +571,12 @@
       );
     let record = null;
     let imageUrl = "";
+    let imageSource = "main";
     if (mediaOutcome) {
       activeRow = mediaOutcome.row;
       record = mediaOutcome.record;
       imageUrl = mediaOutcome.url;
+      imageSource = mediaOutcome.source || "main";
     }
 
     if (!spu || !goodsCode || !pageSkc) {
@@ -560,6 +609,7 @@
       spu,
       goodsCode,
       mainImageUrl: stripImageQuery(imageUrl),
+      imageSource,
       productId: record?.productId || Number(spu),
       productSkcId: record?.productSkcId || Number(pageSkc),
       rowText: normalizeText(activeRow.innerText)
@@ -837,28 +887,209 @@
     return candidates[0] || null;
   }
 
+  async function ensureProductListType(queryType, timeoutMs = 5000) {
+    const typeSelect = findProductListTypeSelect();
+    if (!typeSelect) {
+      throw scriptError("PRODUCT_QUERY_TYPE_NOT_FOUND", "商品列表未找到 SPU/SKC 查询类型");
+    }
+    if (normalizeText(typeSelect.value) === queryType) return true;
+
+    dispatchMouseClick(typeSelect.parentElement);
+    const option = await waitFor(
+      () =>
+        allElements()
+          .filter(
+            (element) =>
+              element.matches?.('li[role="option"]') &&
+              isVisible(element) &&
+              normalizeText(element.textContent) === queryType
+          )
+          .find(Boolean),
+      timeoutMs
+    );
+    if (!option) {
+      throw scriptError("PRODUCT_QUERY_OPTION_NOT_FOUND", `商品列表未找到 ${queryType} 查询类型`);
+    }
+    dispatchMouseClick(option);
+
+    const changed = await waitFor(
+      () => normalizeText(findProductListTypeSelect()?.value) === queryType,
+      timeoutMs
+    );
+    if (!changed) {
+      throw scriptError("PRODUCT_QUERY_TYPE_FAILED", `商品列表查询类型未能切换为 ${queryType}`);
+    }
+    return true;
+  }
+
+  async function activateProductListTab(prefix, timeoutMs = 12000) {
+    const findTab = () =>
+      allElements().find(
+        (element) =>
+          isVisible(element) &&
+          String(element.className || "").includes("TAB_tabItem_") &&
+          normalizeText(element.innerText).startsWith(prefix)
+      );
+    const tab = await waitFor(findTab, timeoutMs);
+    if (!tab) {
+      throw scriptError("PRODUCT_LIST_TAB_NOT_FOUND", `商品列表未找到“${prefix}”分类`);
+    }
+    if (String(tab.className || "").includes("TAB_active_")) return true;
+    dispatchMouseClick(tab);
+    const activated = await waitFor(() => {
+      const current = findTab();
+      return current && String(current.className || "").includes("TAB_active_");
+    }, 7000);
+    if (!activated) {
+      throw scriptError("PRODUCT_LIST_TAB_FAILED", `无法切换到“${prefix}”分类`);
+    }
+    await sleep(600);
+    return true;
+  }
+
+  function findProductListRowsBySpu(spu) {
+    const expected = String(spu);
+    return allElements()
+      .filter(
+        (element) =>
+          element.matches?.("tr") &&
+          isVisible(element) &&
+          new RegExp(`SPU ID[：:]\\s*${expected}(?!\\d)`).test(normalizeText(element.innerText)) &&
+          /SKC ID[：:]\s*\d+/.test(normalizeText(element.innerText))
+      );
+  }
+
+  function findDeleteConfirmModal() {
+    const titles = leafByExactText("确认删除商品？");
+    for (const title of titles) {
+      let cursor = title;
+      for (let depth = 0; cursor && depth < 8; depth += 1) {
+        if (
+          normalizeText(cursor.innerText).includes("确认删除") &&
+          leafByExactText("确认删除", cursor).length
+        ) {
+          return cursor;
+        }
+        cursor = cursor.parentElement;
+      }
+    }
+    return null;
+  }
+
+  async function deletePendingSpu({ spu, dryRun = false, timeoutMs = 150000 }) {
+    const cleanSpu = String(spu || "").trim();
+    if (!/^\d{8,20}$/.test(cleanSpu)) {
+      throw scriptError("SPU_INVALID", `SPU 格式异常：${cleanSpu || "空"}`);
+    }
+    if (!location.href.includes("/goods/list")) {
+      throw scriptError("WRONG_PAGE", "当前不是商品列表页面");
+    }
+
+    await activateProductListTab("未发布到站点");
+    await ensureProductListType("SPU");
+    const input = findInputByPlaceholder("多个查询请空格或逗号");
+    if (!input) {
+      throw scriptError("PRODUCT_QUERY_INPUT_NOT_FOUND", "商品列表未找到 SPU 查询输入框");
+    }
+    setNativeInputValue(input, cleanSpu);
+    await sleep(150);
+    if (!clickExactText("查询")) {
+      throw scriptError("PRODUCT_QUERY_BUTTON_NOT_FOUND", "商品列表未找到查询按钮");
+    }
+
+    await sleep(600);
+    const initialRows = await waitFor(
+      () => {
+        const rows = findProductListRowsBySpu(cleanSpu);
+        if (rows.length) return rows;
+        if (hasNoResultsText()) return [];
+        return null;
+      },
+      Math.min(timeoutMs, 20000)
+    );
+    if (!initialRows?.length) {
+      return {
+        spu: cleanSpu,
+        outcome: "not_found",
+        deletedCount: 0,
+        message: "“未发布到站点”中没有该 SPU"
+      };
+    }
+
+    if (dryRun) {
+      const rowText = normalizeText(initialRows[0].innerText);
+      return {
+        spu: cleanSpu,
+        outcome: "ready",
+        skc: rowText.match(/SKC ID[：:]\s*(\d+)/)?.[1] || "",
+        rowText: rowText.slice(0, 1000)
+      };
+    }
+
+    const deletedSkcs = [];
+    for (let round = 0; round < 100; round += 1) {
+      const row = findProductListRowsBySpu(cleanSpu)[0];
+      if (!row) break;
+      const rowText = normalizeText(row.innerText);
+      const skc = rowText.match(/SKC ID[：:]\s*(\d+)/)?.[1] || "";
+      const deleteCandidate = leafByExactText("删除", row).find(Boolean);
+      if (!deleteCandidate) {
+        throw scriptError(
+          "PRODUCT_DELETE_BUTTON_NOT_FOUND",
+          `SPU ${cleanSpu} / SKC ${skc || "-"} 未找到删除按钮`
+        );
+      }
+      dispatchMouseClick(clickableAncestor(deleteCandidate));
+      const modal = await waitFor(findDeleteConfirmModal, 8000);
+      if (!modal) {
+        throw scriptError(
+          "PRODUCT_DELETE_CONFIRM_NOT_FOUND",
+          `SPU ${cleanSpu} / SKC ${skc || "-"} 未出现删除确认框`
+        );
+      }
+      if (!clickExactText("确认删除", modal, { last: true })) {
+        throw scriptError("PRODUCT_DELETE_CONFIRM_FAILED", "未找到“确认删除”按钮");
+      }
+
+      const removed = await waitFor(() => {
+        const currentModal = findDeleteConfirmModal();
+        const nextRow = findProductListRowsBySpu(cleanSpu)[0];
+        return !currentModal &&
+          (!nextRow || !normalizeText(nextRow.innerText).includes(skc))
+          ? true
+          : null;
+      }, 20000);
+      if (!removed) {
+        throw scriptError(
+          "PRODUCT_DELETE_TIMEOUT",
+          `SKC ${skc || "-"} 删除后列表未更新`
+        );
+      }
+      deletedSkcs.push(skc || `第${round + 1}行`);
+      await sleep(350);
+    }
+
+    const remaining = findProductListRowsBySpu(cleanSpu).length;
+    if (remaining) {
+      throw scriptError(
+        "PRODUCT_DELETE_INCOMPLETE",
+        `SPU ${cleanSpu} 仍有 ${remaining} 个待发布 SKC 未删除`
+      );
+    }
+    return {
+      spu: cleanSpu,
+      outcome: "success",
+      deletedCount: deletedSkcs.length,
+      deletedSkcs
+    };
+  }
+
   async function verifyDownlisted({ skc, timeoutMs = 25000 }) {
     if (!location.href.includes("/goods/list")) {
       throw scriptError("WRONG_PAGE", "当前不是商品列表页面");
     }
 
-    const typeSelect = findProductListTypeSelect();
-    if (typeSelect && normalizeText(typeSelect.value) !== "SKC") {
-      dispatchMouseClick(typeSelect.parentElement);
-      const option = await waitFor(
-        () =>
-          allElements()
-            .filter(
-              (element) =>
-                element.matches?.('li[role="option"]') &&
-                isVisible(element) &&
-                normalizeText(element.textContent) === "SKC"
-            )
-            .find(Boolean),
-        5000
-      );
-      if (option) dispatchMouseClick(option);
-    }
+    await ensureProductListType("SKC");
 
     const input = findInputByPlaceholder("多个查询请空格或逗号");
     if (!input) throw scriptError("PRODUCT_QUERY_INPUT_NOT_FOUND", "商品列表未找到查询输入框");

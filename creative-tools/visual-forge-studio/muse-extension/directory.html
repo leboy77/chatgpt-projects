@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Visual Forge · 归档目录授权</title>
+    <link rel="stylesheet" href="options.css">
+  </head>
+  <body>
+    <main>
+      <header>
+        <span class="mark">VF</span>
+        <div>
+          <p>VISUAL FORGE / EXTENSION STORAGE</p>
+          <h1>归档目录授权</h1>
+        </div>
+      </header>
+
+      <section class="card">
+        <h2>选择任务归档位置</h2>
+        <p>选择一个文件夹后，扩展会在其中自动创建任务子目录。浏览器重启、扩展重载或权限失效时可以重新打开本页授权。</p>
+        <div class="directory-status" id="directoryStatus">正在读取目录状态…</div>
+        <div class="actions">
+          <button id="chooseDirectory" class="primary" type="button">选择或重新授权目录</button>
+          <button id="closePage" type="button">完成并关闭</button>
+        </div>
+        <div id="status" class="status" role="status"></div>
+      </section>
+
+      <section class="card">
+        <h2>保存结构</h2>
+        <p>普通任务保存图片、JSON、CSV 和 README。印花套图会在同一任务目录下建立“生成图”和“拼图与清单”两个同级子目录。</p>
+        <p>扩展只获得你所选目录的读写权限，不会自动获取其他磁盘目录。</p>
+      </section>
+    </main>
+    <script src="local-store.js"></script>
+    <script src="local-archive.js"></script>
+    <script src="directory.js"></script>
+  </body>
+</html>
+

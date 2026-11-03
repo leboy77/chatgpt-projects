@@ -1,0 +1,65 @@
+{
+  "manifest_version": 3,
+  "name": "Visual Forge for Muse",
+  "version": "0.4.1",
+  "description": "在 Muse 页面中使用 /vf 指令调用扩展内置 Visual Forge 批量生产任务。",
+  "permissions": [
+    "activeTab",
+    "storage",
+    "tabs",
+    "unlimitedStorage"
+  ],
+  "host_permissions": [
+    "https://muse.ai/*",
+    "https://*.muse.ai/*",
+    "https://*.fbcdn.net/*",
+    "https://*.facebook.com/*",
+    "https://*.cdninstagram.com/*"
+  ],
+  "optional_host_permissions": [
+    "https://*/*",
+    "http://*/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "打开 Visual Forge"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://muse.ai/*"
+      ],
+      "js": [
+        "command-parser.js",
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "sidepanel.html",
+        "sidepanel.css",
+        "sidepanel.js",
+        "command-parser.js",
+        "zip-builder.js",
+        "local-core.js",
+        "local-store.js",
+        "local-model.js",
+        "local-archive.js",
+        "local-jobs.js"
+      ],
+      "matches": [
+        "https://muse.ai/*"
+      ]
+    }
+  ],
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  }
+}
+

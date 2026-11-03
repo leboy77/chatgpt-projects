@@ -19,7 +19,7 @@
           <button class="skin-swatch forest" data-theme="forest" title="森林绿"></button>
           <button class="skin-swatch sunset" data-theme="sunset" title="暖阳金"></button>
         </div>
-        <span class="version">v2.4.1</span>
+        <span class="version">v2.6.0</span>
       </div>
     </header>
 
@@ -111,7 +111,21 @@
               <small>最终提交后不可轻易恢复</small>
             </span>
           </label>
+          <label>
+            <input type="radio" name="mode" value="delete" />
+            <span>
+              <strong>删除待发布商品并保存主图</strong>
+              <small>保存图片后，从商品列表删除该 SPU 的全部 SKC</small>
+            </span>
+          </label>
         </div>
+        <label class="checkbox-row info">
+          <input id="multiColorInput" type="checkbox" />
+          <span>
+            <strong>是否为多色值商品</strong>
+            <small>勾选后保存轮播图分组中的第一张图；未勾选时保存普通主图</small>
+          </span>
+        </label>
         <label class="field">
           <span>货号分类覆盖（可选）</span>
           <input id="categoryOverrideInput" placeholder="留空自动提取，例如 CXTX" spellcheck="false" />
@@ -123,13 +137,38 @@
           <input id="authorizeSubmitInput" type="checkbox" />
           <span>我确认本批允许自动点击最终“确认”并提交下架</span>
         </label>
+        <label id="deleteAuthorizeWrap" class="checkbox-row hidden">
+          <input id="deleteAuthorizeInput" type="checkbox" />
+          <span>我确认本批允许删除“未发布到站点”中的待发布商品</span>
+        </label>
       </section>
 
       <section class="card">
         <div class="card-title-row">
-          <h2>Excel 数据</h2>
-          <span id="fileMeta" class="badge">未导入</span>
+          <h2>SPU 数据</h2>
+          <span id="fileMeta" class="badge">未添加</span>
         </div>
+        <div class="direct-input-block">
+          <label class="field" for="directSpuInput">
+            <span>直接填写 SPU ID</span>
+            <textarea
+              id="directSpuInput"
+              rows="6"
+              placeholder="每行一个 SPU ID，也支持空格、逗号或分号分隔"
+              spellcheck="false"
+            ></textarea>
+          </label>
+          <div class="button-row direct-actions">
+            <button id="applyDirectInputBtn" class="button primary" disabled>
+              导入到任务列表
+            </button>
+            <button id="clearDirectInputBtn" class="button secondary">清空</button>
+          </div>
+          <p id="directInputMeta" class="hint">
+            支持粘贴整列 SPU ID，将自动去重并忽略序号等非 SPU 数字。
+          </p>
+        </div>
+        <div class="input-divider"><span>或从 Excel 导入</span></div>
         <input id="excelInput" class="file-input" type="file" accept=".xlsx,.xls" />
         <label for="excelInput" class="button secondary full-width">选择 Excel 文件</label>
         <p class="hint">表头需包含 A 列“序号”、B 列“SPU ID”、C 列“状态”。</p>

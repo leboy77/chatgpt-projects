@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+.env
+data/
+*.sqlite3
+*.sqlite3-shm
+*.sqlite3-wal
+dist/
+.chrome-studio-profile*/
+.edge-cdp-profile/
+.edge-studio-auth/
+.research-artifacts/
+
