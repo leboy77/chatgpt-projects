@@ -20,6 +20,7 @@
 | 浏览器工具 | [批量流量加速 Demo](browser-tools/batch-traffic-accelerator/) | `批量流量加速` | 流量规则筛选、价格与毛利预演、分批执行、CSV 导出和侧边栏 Demo |
 | 创意工具 | [暖砂图腾背景生成器](creative-tools/background-generator/) | `New project` | 程序化生成商品背景图和示例成品 |
 | 创意工具 | [Visual Forge Studio](creative-tools/visual-forge-studio/) | `整理`、`MUSE知识库` | POD 视觉生产后端、Muse 扩展、校色质检、文档和测试 |
+| 聊天迁移工具 | [Codex History Export](chat-tools/codex-history-export/) | Codex 本机会话 | 导出可读 Markdown、原始 JSONL、附件、索引和 SHA-256 清单 |
 | 空项目记录 | [空目录说明](archive/README.md) | `日常` | 原目录没有文件，因此没有可上传内容 |
 
 ## 仓库整理规则
@@ -32,3 +33,6 @@
 ## 使用提醒
 
 Temu 相关项目会操作商家后台。正式运行前请先阅读各项目文档并使用预览或试运行模式，遵守平台规则，并确认账号、价格、商品和图片数据的处理权限。
+
+Codex 原始会话可能包含历史命令输出和敏感业务数据。仓库只提供导出脚本，
+不包含聊天原始记录；公开分享前应只使用经过检查的可读稿或脱敏版本。

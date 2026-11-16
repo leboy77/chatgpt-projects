@@ -16,6 +16,7 @@
 | Temu 商品首图采集器 | 浏览器扩展 | `reverse-engineering/temu-image-collector/temu-image-collector/` |
 | 暖砂图腾背景生成器 | 命令行 | `creative-tools/background-generator/make_background.py` |
 | Chrome CDP 页面探针 | 命令行 | `browser-tools/chrome-cdp-probe/chrome_probe.py` |
+| Codex 聊天记录导出 | 命令行 | `chat-tools/codex-history-export/export_history.py` |
 
 ## 一、浏览器扩展的通用打开方式
 
@@ -214,6 +215,16 @@ python browser-tools\chrome-cdp-probe\chrome_probe.py 9333 https://example.com
 ```
 
 脚本会输出页面标题、控制台事件和网络响应摘要。
+
+### Codex 聊天记录导出
+
+```powershell
+python .\chat-tools\codex-history-export\export_history.py
+```
+
+默认会在当前目录创建带时间戳的导出目录。迁移当前对话时使用
+`current-thread.md`；全部历史可从 `SESSIONS.md` 查找。原始 JSONL 可能
+包含敏感工具输出，不要上传到公开仓库。
 
 ## 使用顺序建议
 
