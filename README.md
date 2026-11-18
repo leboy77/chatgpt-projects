@@ -18,7 +18,7 @@
 配套的 Temu SOP 与市场研究仓库：
 [temu-sop-agent-toolkit](https://github.com/leboy77/temu-sop-agent-toolkit)
 
-最近更新：2026-11-17
+最近更新：2026-11-18
 
 ## 快速入口
 

@@ -22,7 +22,7 @@ The collection follows three principles:
 Companion Temu SOP and market-research repository:
 [temu-sop-agent-toolkit](https://github.com/leboy77/temu-sop-agent-toolkit)
 
-Last updated: 2026-11-17
+Last updated: 2026-11-18
 
 ## Quick Links
 
