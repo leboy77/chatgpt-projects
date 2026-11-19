@@ -96,7 +96,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   // 真实键盘文本输入（部分组件只信任 isTrusted 的输入事件，例如色值下拉框）
   if (msg && msg.type === 'TYPE_TEXT') {
     console.log('[TEMU图片助手] TYPE_TEXT 请求', JSON.stringify({ text: msg.text, tab: sender.tab && sender.tab.id }));
-    const tabId = (sender.tab && sender.tab.id) != null ? sender.tab.id : msg.tabId;
+    const tabId = Number(msg.tabId) || (sender.tab && sender.tab.id);
     if (tabId == null) {
       sendResponse({ ok: false, error: '拿不到标签页 id' });
       return true;
@@ -110,7 +110,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         await chrome.debugger.attach({ tabId }, '1.3');
         console.log('[TEMU图片助手] debugger 已附加', tabId);
       } catch (err) {
-        const msg2 = '调试器附加失败：' + String(err && err.message || err);
+        const msg2 = '调试器附加失败：' + String(err && err.message || err)
+          + '（tabId=' + tabId + '，sender=' + (sender.tab ? sender.tab.url : 'none') + '）';
         console.error('[TEMU图片助手]', msg2);
         sendResponse({ ok: false, error: msg2 });
         return;
@@ -167,7 +168,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true;
   }
   if (msg && msg.type === 'REAL_CLICK') {
-    const tabId = (sender.tab && sender.tab.id) != null ? sender.tab.id : msg.tabId;
+    const tabId = Number(msg.tabId) || (sender.tab && sender.tab.id);
     if (tabId == null) {
       sendResponse({ ok: false, error: '拿不到标签页 id' });
       return true;
@@ -176,7 +177,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       try {
         await chrome.debugger.attach({ tabId }, '1.3');
       } catch (err) {
-        sendResponse({ ok: false, error: '调试器附加失败：' + String(err && err.message || err) });
+        sendResponse({ ok: false, error: '调试器附加失败：' + String(err && err.message || err)
+          + '（tabId=' + tabId + '，sender=' + (sender.tab ? sender.tab.url : 'none') + '）' });
         return;
       }
       try {
@@ -202,7 +204,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true;
   }
   if (msg && msg.type === 'NAVIGATE_URL') {
-    const tabId = (sender.tab && sender.tab.id) != null ? sender.tab.id : msg.tabId;
+    const tabId = Number(msg.tabId) || (sender.tab && sender.tab.id);
     if (tabId == null || !msg.url) {
       sendResponse({ ok: false, error: '导航参数无效' });
       return true;
@@ -239,6 +241,25 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         sendResponse(preferred
           ? { ok: true, url: preferred.url, tabId: preferred.id }
           : { ok: false, error: '没有找到商品信息确认页' });
+      } catch (err) {
+        sendResponse({ ok: false, error: String(err && err.message || err) });
+      }
+    })();
+    return true;
+  }
+  if (msg && msg.type === 'FIND_TAB') {
+    (async () => {
+      try {
+        const tabs = await chrome.tabs.query({});
+        const currentTabId = sender.tab && sender.tab.id;
+        const hits = tabs.filter((tab) => tab.url
+          && tab.url.includes(msg.urlKeyword)
+          && tab.id !== currentTabId)
+          .sort((a, b) => Number(b.id || 0) - Number(a.id || 0));
+        const preferred = hits[0];
+        sendResponse(preferred
+          ? { ok: true, tabId: preferred.id, url: preferred.url, windowId: preferred.windowId }
+          : { ok: false, error: '没有找到匹配的标签页' });
       } catch (err) {
         sendResponse({ ok: false, error: String(err && err.message || err) });
       }

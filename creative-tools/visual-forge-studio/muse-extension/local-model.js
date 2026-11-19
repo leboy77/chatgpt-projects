@@ -69,6 +69,22 @@
     return new Blob([bytes], { type });
   }
 
+  async function imageFromPayload(payload) {
+    const item = payload?.data?.[0];
+    if (!item) throw new Error("图片接口响应中没有 data[0]");
+    if (item.b64_json) {
+      return base64ToBlob(item.b64_json, "image/png");
+    }
+    if (item.url) {
+      const response = await fetch(item.url);
+      if (!response.ok) {
+        throw new Error(`生成图片下载失败：HTTP ${response.status}`);
+      }
+      return response.blob();
+    }
+    throw new Error("图片接口响应中没有 b64_json 或 url");
+  }
+
   async function createProvider(config = null) {
     const settings = config || (await loadConfig());
     if (settings.provider === "mock") {
@@ -77,6 +93,14 @@
         model: null,
         async generate(prompt, size) {
           return root.VisualForgeCore.mockImage(prompt, size);
+        },
+        async edit(prompt, size, quality, sourceBlob, variantIndex = null) {
+          return root.VisualForgeCore.mockImageEdit(
+            prompt,
+            size,
+            sourceBlob,
+            variantIndex,
+          );
         },
       };
     }
@@ -127,19 +151,59 @@
         } finally {
           clearTimeout(timeout);
         }
-        const item = payload?.data?.[0];
-        if (!item) throw new Error("图片接口响应中没有 data[0]");
-        if (item.b64_json) {
-          return base64ToBlob(item.b64_json, "image/png");
-        }
-        if (item.url) {
-          const response = await fetch(item.url);
-          if (!response.ok) {
-            throw new Error(`生成图片下载失败：HTTP ${response.status}`);
+        return imageFromPayload(payload);
+      },
+      async edit(prompt, size, quality, sourceBlob) {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 180000);
+        let payload;
+        try {
+          const form = new FormData();
+          form.append("model", settings.model);
+          form.append("prompt", prompt);
+          form.append("n", "1");
+          form.append("size", size);
+          form.append("quality", quality);
+          const sourceExtension = sourceBlob.type?.includes("jpeg")
+            ? "jpg"
+            : sourceBlob.type?.includes("webp")
+              ? "webp"
+              : "png";
+          form.append(
+            "image",
+            sourceBlob,
+            `visualforge-master.${sourceExtension}`,
+          );
+          const response = await fetch(`${settings.baseUrl}/images/edits`, {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${settings.apiKey}`,
+              "Accept": "application/json",
+            },
+            body: form,
+            signal: controller.signal,
+          });
+          const text = await response.text();
+          try {
+            payload = JSON.parse(text);
+          } catch {
+            throw new Error(`图片编辑接口返回非 JSON：${text.slice(0, 300)}`);
           }
-          return response.blob();
+          if (!response.ok) {
+            throw new Error(
+              `图片编辑接口返回 HTTP ${response.status}：` +
+                JSON.stringify(payload).slice(0, 500),
+            );
+          }
+        } catch (error) {
+          if (error.name === "AbortError") {
+            throw new Error("图片编辑接口请求超时");
+          }
+          throw error;
+        } finally {
+          clearTimeout(timeout);
         }
-        throw new Error("图片接口响应中没有 b64_json 或 url");
+        return imageFromPayload(payload);
       },
     };
   }

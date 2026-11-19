@@ -23,6 +23,7 @@
 
   const PANEL_ID = "tec-panel";
   const PANEL_POSITION_KEY = "tecPanelPosition";
+  const COLLECTED_URLS_KEY = "tecCollectedImageUrls";
   const IMAGE_FOLDER = "图片";
   const CARD_SELECTOR = '[data-tooltip^="goodContainer-"]';
   const CARD_IMAGE_SELECTOR =
@@ -45,6 +46,10 @@
     simple: { label: "简单采集", description: "读取每张商品卡片的当前首图" },
     colors: { label: "多首图采集", description: "按色值读取每个色值的首图" },
     full: { label: "完整采集", description: "按色值读取全部轮播图" },
+    detail: {
+      label: "详情图采集",
+      description: "进入商品详情页，按色值读取全部详情图",
+    },
   };
 
   const state = {
@@ -54,6 +59,15 @@
     abortController: null,
     pausedJob: null,
     collectTitle: true,
+    detailFirstOnly: false,
+    exportLinksOnly: false,
+    autoPaging: false,
+    pageLimit: 1,
+    targetProducts: 0,
+    filterAds: true,
+    filterDuplicates: true,
+    collectedUrls: new Set(),
+    collectedUrlsLoaded: false,
     lastHref: location.href,
     lastLog: "",
     excludedCount: 0,
@@ -174,7 +188,11 @@
     });
   }
 
-  function productCardExclusion(card, recommendationSections) {
+  function productCardExclusion(
+    card,
+    recommendationSections,
+    filterAds = state.filterAds,
+  ) {
     const section = card.closest(GOODS_LIST_SELECTOR);
     if (
       section &&
@@ -183,7 +201,7 @@
     ) {
       return "recommendation";
     }
-    return hasAdvertisementBadge(card) ? "advertisement" : "";
+    return filterAds && hasAdvertisementBadge(card) ? "advertisement" : "";
   }
 
   function isHttpUrl(value) {
@@ -326,7 +344,10 @@
     }
     const button = document.querySelector("#tec-start");
     if (button && !state.running) {
-      button.disabled = state.selected.size === 0 && !state.pausedJob;
+      button.disabled =
+        state.selected.size === 0 &&
+        !state.pausedJob &&
+        !state.autoPaging;
       button.textContent = state.pausedJob
         ? pausedJobButtonLabel()
         : "开始采集";
@@ -551,14 +572,53 @@
             <option value="simple">简单采集</option>
             <option value="colors">多首图采集</option>
             <option value="full">完整采集</option>
+            <option value="detail">详情图采集</option>
           </select>
           <label class="tec-checkbox">
             <input type="checkbox" id="tec-collect-title" checked>
             <span>采集商品标题</span>
           </label>
+          <label class="tec-checkbox" id="tec-detail-first-only-wrap" hidden>
+            <input type="checkbox" id="tec-detail-first-only">
+            <span>仅每色值首图</span>
+          </label>
+          <label class="tec-checkbox">
+            <input type="checkbox" id="tec-export-links-only">
+            <span>仅导出图片链接（TXT）</span>
+          </label>
           <button type="button" class="tec-action primary" id="tec-start" disabled>开始采集</button>
           <button type="button" class="tec-action" id="tec-abandon-job" hidden>放弃任务</button>
           <button type="button" class="tec-action" id="tec-log-toggle">查看日志</button>
+        </div>
+        <div class="tec-panel-row">
+          <label class="tec-checkbox">
+            <input type="checkbox" id="tec-auto-paging">
+            <span>自动翻页</span>
+          </label>
+          <label class="tec-inline-field">
+            <span>页数</span>
+            <input type="number" id="tec-page-limit" min="1" max="100" value="1">
+          </label>
+          <label class="tec-inline-field">
+            <span>本次商品数</span>
+            <input type="number" id="tec-target-products" min="0" max="100000" value="0" title="0 表示不限制">
+          </label>
+          <label class="tec-inline-field">
+            <span>过滤 AD</span>
+            <select id="tec-filter-ads">
+              <option value="yes">是</option>
+              <option value="no">否</option>
+            </select>
+          </label>
+          <label class="tec-inline-field">
+            <span>重复链接</span>
+            <select id="tec-filter-duplicates">
+              <option value="yes">跳过</option>
+              <option value="no">保留</option>
+            </select>
+          </label>
+          <button type="button" class="tec-action" id="tec-clear-url-history">清空链接记录</button>
+          <span class="tec-history-count" id="tec-url-history-count">已记录链接 0 条</span>
         </div>
         <div class="tec-panel-row">
           <span class="tec-save-path">保存路径：<strong id="tec-save-path-name">浏览器默认下载</strong></span>
@@ -607,6 +667,7 @@
       chrome.storage.local.set({ tecMode: event.target.value });
       const meta = MODE_META[event.target.value];
       setProgress(0, meta.description);
+      updateModeControls(event.target.value);
     });
     panel
       .querySelector("#tec-collect-title")
@@ -614,15 +675,98 @@
         state.collectTitle = event.target.checked;
         chrome.storage.local.set({ tecCollectTitle: state.collectTitle });
       });
+    panel
+      .querySelector("#tec-detail-first-only")
+      .addEventListener("change", (event) => {
+        state.detailFirstOnly = event.target.checked;
+        chrome.storage.local.set({
+          tecDetailFirstOnly: state.detailFirstOnly,
+        });
+      });
+    panel
+      .querySelector("#tec-export-links-only")
+      .addEventListener("change", (event) => {
+        state.exportLinksOnly = event.target.checked;
+        chrome.storage.local.set({
+          tecExportLinksOnly: state.exportLinksOnly,
+        });
+        updateModeControls(
+          document.querySelector("#tec-mode")?.value || "simple",
+        );
+      });
+    panel.querySelector("#tec-auto-paging").addEventListener("change", (event) => {
+      state.autoPaging = event.target.checked;
+      chrome.storage.local.set({ tecAutoPaging: state.autoPaging });
+      updatePagingControls();
+      refreshPanelSummary();
+    });
+    panel.querySelector("#tec-page-limit").addEventListener("change", (event) => {
+      state.pageLimit = Math.max(
+        1,
+        Math.min(100, Number.parseInt(event.target.value, 10) || 1),
+      );
+      event.target.value = String(state.pageLimit);
+      chrome.storage.local.set({ tecPageLimit: state.pageLimit });
+    });
+    panel
+      .querySelector("#tec-target-products")
+      .addEventListener("change", (event) => {
+        state.targetProducts = Math.max(
+          0,
+          Math.min(100000, Number.parseInt(event.target.value, 10) || 0),
+        );
+        event.target.value = String(state.targetProducts);
+        chrome.storage.local.set({
+          tecTargetProducts: state.targetProducts,
+        });
+      });
+    panel.querySelector("#tec-filter-ads").addEventListener("change", (event) => {
+      state.filterAds = event.target.value === "yes";
+      chrome.storage.local.set({ tecFilterAds: state.filterAds });
+      scanCards();
+    });
+    panel
+      .querySelector("#tec-filter-duplicates")
+      .addEventListener("change", (event) => {
+        state.filterDuplicates = event.target.value === "yes";
+        chrome.storage.local.set({
+          tecFilterDuplicates: state.filterDuplicates,
+        });
+      });
+    panel
+      .querySelector("#tec-clear-url-history")
+      .addEventListener("click", async () => {
+        if (state.running) return;
+        if (!window.confirm("清空已采集图片链接记录？清空后相同链接可以再次采集。")) {
+          return;
+        }
+        state.collectedUrls.clear();
+        await storageSet({ [COLLECTED_URLS_KEY]: [] });
+        updateCollectedUrlCount();
+        setProgress(0, "已清空图片链接记录");
+      });
     panel.querySelector("#tec-start").addEventListener("click", () => {
       if (state.running) {
         state.abortController?.abort();
         return;
       }
       if (state.pausedJob) {
-        runCollection(state.pausedJob.mode, state.pausedJob);
+        if (
+          state.pausedJob.autoPaging &&
+          !state.pausedJob.pagingComplete
+        ) {
+          state.pausedJob.status = "paging";
+          continueAutoPaging(state.pausedJob);
+        } else {
+          runCollection(state.pausedJob.mode, state.pausedJob);
+        }
       } else {
-        runCollection(panel.querySelector("#tec-mode").value);
+        const mode = panel.querySelector("#tec-mode").value;
+        if (state.autoPaging) {
+          startAutoPagedCollection(mode);
+        } else {
+          runCollection(mode);
+        }
       }
     });
     panel.querySelector("#tec-abandon-job").addEventListener("click", async () => {
@@ -640,12 +784,62 @@
     });
 
     chrome.storage.local.get(
-      { tecMode: "simple", tecCollectTitle: true },
-      ({ tecMode, tecCollectTitle }) => {
+      {
+        tecMode: "simple",
+        tecCollectTitle: true,
+        tecDetailFirstOnly: false,
+        tecExportLinksOnly: false,
+        tecAutoPaging: false,
+        tecPageLimit: 1,
+        tecTargetProducts: 0,
+        tecFilterAds: true,
+        tecFilterDuplicates: true,
+      },
+      ({
+        tecMode,
+        tecCollectTitle,
+        tecDetailFirstOnly,
+        tecExportLinksOnly,
+        tecAutoPaging,
+        tecPageLimit,
+        tecTargetProducts,
+        tecFilterAds,
+        tecFilterDuplicates,
+      }) => {
         const mode = panel.querySelector("#tec-mode");
         if (MODE_META[tecMode]) mode.value = tecMode;
         state.collectTitle = tecCollectTitle !== false;
+        state.detailFirstOnly = tecDetailFirstOnly === true;
         panel.querySelector("#tec-collect-title").checked = state.collectTitle;
+        panel.querySelector("#tec-detail-first-only").checked =
+          state.detailFirstOnly;
+        state.exportLinksOnly = tecExportLinksOnly === true;
+        panel.querySelector("#tec-export-links-only").checked =
+          state.exportLinksOnly;
+        state.autoPaging = tecAutoPaging === true;
+        state.pageLimit = Math.max(
+          1,
+          Math.min(100, Number.parseInt(tecPageLimit, 10) || 1),
+        );
+        state.targetProducts = Math.max(
+          0,
+          Math.min(100000, Number.parseInt(tecTargetProducts, 10) || 0),
+        );
+        state.filterAds = tecFilterAds !== false;
+        state.filterDuplicates = tecFilterDuplicates !== false;
+        panel.querySelector("#tec-auto-paging").checked = state.autoPaging;
+        panel.querySelector("#tec-page-limit").value = String(state.pageLimit);
+        panel.querySelector("#tec-target-products").value = String(
+          state.targetProducts,
+        );
+        panel.querySelector("#tec-filter-ads").value = state.filterAds
+          ? "yes"
+          : "no";
+        panel.querySelector("#tec-filter-duplicates").value =
+          state.filterDuplicates ? "yes" : "no";
+        updatePagingControls();
+        updateModeControls(mode.value);
+        loadCollectedUrls();
         setProgress(0, MODE_META[mode.value].description);
         restoreActiveJob();
       },
@@ -754,7 +948,40 @@
 
   async function restoreActiveJob() {
     const job = await storageGet("tecActiveJob");
-    if (!job?.products?.length) return;
+    if (
+      !job ||
+      (!job.products?.length && !job.autoPaging && job.status !== "paging")
+    ) {
+      return;
+    }
+    const autoResumePaging = job.status === "paging";
+    if (autoResumePaging) {
+      state.pausedJob = job;
+      applyJobPresentation(job);
+      setProgress(
+        1,
+        `自动翻页恢复中：第 ${job.pagingPage || 1}/${job.pageLimit || 1} 页，` +
+          `已收集 ${job.products?.length || 0} 个商品`,
+      );
+      updatePagingControls();
+      setTimeout(() => continueAutoPaging(job), 250);
+      return;
+    }
+    const autoResumeDetail =
+      job.mode === "detail" &&
+      (job.status === "running" || job.status === "navigating");
+    if (autoResumeDetail) {
+      state.pausedJob = job;
+      applyJobPresentation(job);
+      setProgress(
+        1,
+        `详情图任务恢复中：${job.completedProductIds?.length || 0}/${
+          job.products.length
+        }`,
+      );
+      setTimeout(() => runCollection("detail", job), 250);
+      return;
+    }
     if (job.status === "running") {
       job.status = "paused";
       job.pauseReason =
@@ -763,11 +990,7 @@
     }
     if (job.status !== "paused") return;
     state.pausedJob = job;
-    const mode = document.querySelector("#tec-mode");
-    const titleToggle = document.querySelector("#tec-collect-title");
-    if (mode && MODE_META[job.mode]) mode.value = job.mode;
-    if (titleToggle) titleToggle.checked = job.titleEnabled !== false;
-    state.collectTitle = job.titleEnabled !== false;
+    applyJobPresentation(job);
     setRunning(false);
     setProgress(
       0,
@@ -791,6 +1014,136 @@
       label.textContent = "浏览器默认下载";
       label.title = "";
     }
+  }
+
+  function updateModeControls(mode) {
+    const wrapper = document.querySelector("#tec-detail-first-only-wrap");
+    const checkbox = document.querySelector("#tec-detail-first-only");
+    const titleToggle = document.querySelector("#tec-collect-title");
+    if (wrapper) wrapper.hidden = mode !== "detail";
+    if (checkbox) {
+      checkbox.checked = state.detailFirstOnly;
+      checkbox.disabled = state.running || Boolean(state.pausedJob);
+    }
+    if (titleToggle) {
+      titleToggle.disabled =
+        state.exportLinksOnly ||
+        state.running ||
+        Boolean(state.pausedJob);
+    }
+  }
+
+  function updatePagingControls() {
+    const disabled = state.running || Boolean(state.pausedJob);
+    const auto = document.querySelector("#tec-auto-paging");
+    const pageLimit = document.querySelector("#tec-page-limit");
+    const target = document.querySelector("#tec-target-products");
+    const clearHistory = document.querySelector("#tec-clear-url-history");
+    if (auto) {
+      auto.checked = state.autoPaging;
+      auto.disabled = disabled;
+    }
+    if (pageLimit) {
+      pageLimit.value = String(state.pageLimit);
+      pageLimit.disabled = disabled || !state.autoPaging;
+    }
+    if (target) {
+      target.value = String(state.targetProducts);
+      target.disabled = disabled || !state.autoPaging;
+    }
+    const filterAds = document.querySelector("#tec-filter-ads");
+    const filterDuplicates = document.querySelector("#tec-filter-duplicates");
+    if (filterAds) {
+      filterAds.value = state.filterAds ? "yes" : "no";
+      filterAds.disabled = disabled;
+    }
+    if (filterDuplicates) {
+      filterDuplicates.value = state.filterDuplicates ? "yes" : "no";
+      filterDuplicates.disabled = disabled;
+    }
+    if (clearHistory) clearHistory.disabled = state.running;
+  }
+
+  function updateCollectedUrlCount() {
+    const label = document.querySelector("#tec-url-history-count");
+    if (label) {
+      label.textContent = `已记录链接 ${state.collectedUrls.size} 条`;
+    }
+  }
+
+  async function loadCollectedUrls() {
+    if (state.collectedUrlsLoaded) return state.collectedUrls;
+    const stored = await storageGet(COLLECTED_URLS_KEY);
+    state.collectedUrls = new Set(
+      Array.isArray(stored)
+        ? stored.filter((url) => isHttpUrl(url))
+        : [],
+    );
+    state.collectedUrlsLoaded = true;
+    updateCollectedUrlCount();
+    return state.collectedUrls;
+  }
+
+  async function rememberCollectedUrls(urls) {
+    await loadCollectedUrls();
+    const values = [...state.collectedUrls];
+    for (const url of urls) {
+      if (isHttpUrl(url) && !state.collectedUrls.has(url)) {
+        state.collectedUrls.add(url);
+        values.push(url);
+      }
+    }
+    const compact = values.slice(-100000);
+    state.collectedUrls = new Set(compact);
+    await storageSet({ [COLLECTED_URLS_KEY]: compact });
+    updateCollectedUrlCount();
+  }
+
+  function filterDuplicateAssets(assets, enabled) {
+    if (!enabled) return { assets, skipped: 0 };
+    const seen = new Set();
+    let skipped = 0;
+    const filtered = assets.filter((asset) => {
+      const url = isHttpUrl(asset.sourceUrl) ? asset.sourceUrl : "";
+      if (
+        !url ||
+        seen.has(url) ||
+        state.collectedUrls.has(url)
+      ) {
+        skipped += 1;
+        return false;
+      }
+      seen.add(url);
+      return true;
+    });
+    return { assets: filtered, skipped };
+  }
+
+  function applyJobPresentation(job) {
+    state.collectTitle = job.titleEnabled !== false;
+    state.detailFirstOnly = job.detailFirstOnly === true;
+    state.exportLinksOnly = job.exportLinksOnly === true;
+    state.autoPaging = job.autoPaging === true;
+    state.pageLimit = Math.max(
+      1,
+      Math.min(100, Number.parseInt(job.pageLimit, 10) || 1),
+    );
+    state.targetProducts = Math.max(
+      0,
+      Math.min(100000, Number.parseInt(job.targetProducts, 10) || 0),
+    );
+    state.filterAds = job.filterAds !== false;
+    state.filterDuplicates = job.filterDuplicates !== false;
+    const mode = document.querySelector("#tec-mode");
+    const titleToggle = document.querySelector("#tec-collect-title");
+    const detailToggle = document.querySelector("#tec-detail-first-only");
+    const linksToggle = document.querySelector("#tec-export-links-only");
+    if (mode && MODE_META[job.mode]) mode.value = job.mode;
+    if (titleToggle) titleToggle.checked = state.collectTitle;
+    if (detailToggle) detailToggle.checked = state.detailFirstOnly;
+    if (linksToggle) linksToggle.checked = state.exportLinksOnly;
+    updateModeControls(job.mode);
+    updatePagingControls();
   }
 
   window.addEventListener("message", (event) => {
@@ -838,11 +1191,18 @@
         ? pausedJobButtonLabel()
         : "开始采集";
     panel.querySelector("#tec-start").disabled =
-      !running && !hasPausedJob && state.selected.size === 0;
+      !running &&
+      !hasPausedJob &&
+      state.selected.size === 0 &&
+      !state.autoPaging;
     panel.querySelector("#tec-select-all").disabled = running || hasPausedJob;
     panel.querySelector("#tec-clear").disabled = running || hasPausedJob;
     panel.querySelector("#tec-mode").disabled = running || hasPausedJob;
     panel.querySelector("#tec-collect-title").disabled =
+      running || hasPausedJob || state.exportLinksOnly;
+    panel.querySelector("#tec-detail-first-only").disabled =
+      running || hasPausedJob;
+    panel.querySelector("#tec-export-links-only").disabled =
       running || hasPausedJob;
     panel.querySelector("#tec-abandon-job").hidden =
       !hasPausedJob || running;
@@ -853,6 +1213,7 @@
       button.disabled = running || hasPausedJob;
     }
     refreshRowToggleLabels();
+    updatePagingControls();
   }
 
   function findQuickLookControl(card) {
@@ -966,7 +1327,7 @@
   function getColorOptions(dialog) {
     const radios = [
       ...dialog.querySelectorAll(
-        '[role="radio"], [role="radio"][data-spec-value-id]',
+        '[role="radio"], [role="radio"][data-spec-value-id], [data-spec-value-id]',
       ),
     ].filter((option) => isVisible(option));
     if (!radios.length) return [];
@@ -1284,6 +1645,277 @@
     };
   }
 
+  function currentDetailProductId(url = location.href) {
+    const match = String(url || "").match(/-g-(\d{6,})(?:\.html)?(?:[?#]|$)/i);
+    if (match) return match[1];
+    try {
+      const id = new URL(url, location.href).searchParams.get("goods_id");
+      return /^\d{6,}$/.test(id || "") ? id : "";
+    } catch {
+      return "";
+    }
+  }
+
+  function detailPageTitle(fallback = "") {
+    const candidates = [];
+    const heading = document.querySelector(
+      'h1,[data-testid*="product-title" i],[class*="product-title" i]',
+    );
+    if (heading) candidates.push(heading.innerText || heading.textContent);
+    const ogTitle = document
+      .querySelector('meta[property="og:title"]')
+      ?.getAttribute("content");
+    if (ogTitle) {
+      candidates.push(ogTitle.replace(/\s*[-|]\s*Temu(?:\s+[^-|]+)?\s*$/i, ""));
+    }
+    const ariaTitle = document.querySelector(
+      '[data-testid*="title" i][aria-label]',
+    );
+    if (ariaTitle) candidates.push(ariaTitle.getAttribute("aria-label"));
+    candidates.push(fallback);
+    return (
+      candidates
+        .map((value) => normalizeText(value))
+        .find((value) => value.length >= 8 && value.length <= 2000) || fallback
+    );
+  }
+
+  function isProductCdnUrl(url) {
+    return (
+      isHttpUrl(url) &&
+      /kwcdn\.com\/(?:product|image)|kwcdn\.com\/.*(?:goods|detail)/i.test(url)
+    );
+  }
+
+  function detailImageEntries(root) {
+    const entries = [];
+    let order = 0;
+    for (const element of root.querySelectorAll("img,[style]")) {
+      if (element.closest(CARD_SELECTOR)) continue;
+      const url = imageUrlsFromElement(element).find(isProductCdnUrl);
+      if (!url) continue;
+      const rect = element.getBoundingClientRect();
+      entries.push({
+        element,
+        url,
+        order: order++,
+        index: Number(element.dataset.index ?? element.parentElement?.dataset.index),
+        top: rect.top + scrollY,
+        left: rect.left,
+        area: Math.max(0, rect.width) * Math.max(0, rect.height),
+        hasLazySource: Boolean(
+          element.getAttribute("data-src") ||
+            element.getAttribute("data-lazy-src"),
+        ),
+      });
+    }
+    return entries;
+  }
+
+  function detailGalleryRoot() {
+    const candidates = [];
+    for (const root of document.querySelectorAll(
+      '[role="listbox"],ol,ul,[class*="thumbnail" i],[class*="gallery" i],[class*="carousel" i]',
+    )) {
+      if (root.closest(CARD_SELECTOR)) continue;
+      const entries = detailImageEntries(root);
+      const uniqueCount = new Set(
+        entries.map((entry) => stripImageQuery(entry.url)),
+      ).size;
+      if (uniqueCount < 2) continue;
+      const rect = root.getBoundingClientRect();
+      candidates.push({
+        root,
+        entries,
+        count: uniqueCount,
+        top: Math.max(0, rect.top + scrollY),
+        hasImageOptions: Boolean(
+          root.querySelector('[role="option"][aria-label*="image" i]'),
+        ),
+        inProductMain: Boolean(
+          root.closest("main,#main,.mainContent,.baseContent,[role='main']"),
+        ),
+      });
+    }
+    const productCandidates = candidates.filter(
+      (candidate) => candidate.inProductMain,
+    );
+    const pool = productCandidates.length ? productCandidates : candidates;
+    pool.sort((left, right) => {
+      if (left.hasImageOptions !== right.hasImageOptions) {
+        return left.hasImageOptions ? -1 : 1;
+      }
+      if (left.top !== right.top) return left.top - right.top;
+      return right.count - left.count;
+    });
+    return pool[0] || null;
+  }
+
+  function detailGalleryItems() {
+    const gallery = detailGalleryRoot();
+    let entries = gallery?.entries || [];
+    if (!entries.length) {
+      const productMain = document.querySelector(
+        "main,#main,.mainContent,.baseContent,[role='main']",
+      );
+      entries = detailImageEntries(productMain || document).filter(
+        (entry) => entry.area >= 120 * 120 || entry.hasLazySource,
+      );
+    }
+    entries.sort((left, right) => {
+      const leftIndex = Number.isFinite(left.index) ? left.index : 9999;
+      const rightIndex = Number.isFinite(right.index) ? right.index : 9999;
+      if (leftIndex !== rightIndex) return leftIndex - rightIndex;
+      if (Math.abs(left.top - right.top) > 8) return left.top - right.top;
+      if (left.left !== right.left) return left.left - right.left;
+      return left.order - right.order;
+    });
+
+    const result = [];
+    const seen = new Set();
+    for (const entry of entries) {
+      const baseUrl = stripImageQuery(entry.url);
+      if (!baseUrl || seen.has(baseUrl)) continue;
+      seen.add(baseUrl);
+      result.push({
+        index: Number.isFinite(entry.index) ? entry.index : result.length,
+        baseUrl,
+        thumbUrl: entry.url,
+      });
+    }
+    return result;
+  }
+
+  async function snapshotDetailColor(colorOption, index, firstOnly) {
+    if (!colorOption) {
+      await waitFor(() => detailGalleryItems().length > 0, 8000);
+      const items = detailGalleryItems();
+      return {
+        name: "默认",
+        id: "default",
+        items: firstOnly ? items.slice(0, 1) : items,
+        signature: items.map((item) => item.baseUrl).join("|"),
+      };
+    }
+
+    const before = detailGalleryItems()
+      .map((item) => item.baseUrl)
+      .join("|");
+    const alreadySelected = colorOption.getAttribute("aria-checked") === "true";
+    if (!alreadySelected && isColorOptionUnavailable(colorOption)) {
+      return {
+        name: colorName(colorOption, index),
+        id: colorOption.dataset.specValueId || "",
+        skipped: true,
+        warning: "色值已售罄，已跳过",
+        items: [],
+      };
+    }
+    if (!alreadySelected) {
+      colorOption.scrollIntoView({ block: "center", inline: "nearest" });
+      colorOption.click();
+      const selected = await waitFor(
+        () => colorOption.getAttribute("aria-checked") === "true",
+        2500,
+        80,
+      );
+      if (!selected) {
+        return {
+          name: colorName(colorOption, index),
+          id: colorOption.dataset.specValueId || "",
+          skipped: true,
+          warning: isColorOptionUnavailable(colorOption)
+            ? "色值已售罄，已跳过"
+            : "点击后色值未选中，可能已售罄，已跳过",
+          items: [],
+        };
+      }
+      await waitFor(() => {
+        const after = detailGalleryItems()
+          .map((item) => item.baseUrl)
+          .join("|");
+        return after && after !== before;
+      }, 5000, 100);
+    }
+    await waitFor(() => detailGalleryItems().length > 0, 5000);
+    const items = detailGalleryItems();
+    const signature = items.map((item) => item.baseUrl).join("|");
+    if (!alreadySelected && signature === before) {
+      return {
+        name: colorName(colorOption, index),
+        id: colorOption.dataset.specValueId || "",
+        skipped: true,
+        warning: "切换色值后详情图未变化，可能已售罄，已跳过",
+        items: [],
+      };
+    }
+    return {
+      name: colorName(colorOption, index),
+      id: colorOption.dataset.specValueId || "",
+      checked: true,
+      signature,
+      items: firstOnly ? items.slice(0, 1) : items,
+    };
+  }
+
+  async function captureViaDetailPage(product, firstOnly, signal) {
+    if (signal?.aborted) {
+      return { colors: [], warning: "", stopped: true };
+    }
+    const pageProductId = currentDetailProductId();
+    if (!pageProductId || pageProductId !== product.id) {
+      return {
+        colors: [],
+        warning: `当前页面不是商品 ${product.id} 的详情页`,
+      };
+    }
+
+    product.title = detailPageTitle(product.title);
+    await waitFor(() => detailGalleryItems().length > 0, 10000);
+    let colorOptions = getColorOptions(document);
+    if (!colorOptions.length) {
+      await waitFor(() => getColorOptions(document).length > 0, 1200);
+      colorOptions = getColorOptions(document);
+    }
+    const sourceOptions = colorOptions.length ? colorOptions : [null];
+    const colors = [];
+    const seenColorSignatures = new Map();
+    let stopped = false;
+    for (let index = 0; index < sourceOptions.length; index += 1) {
+      if (signal?.aborted) {
+        stopped = true;
+        break;
+      }
+      const snapshot = await snapshotDetailColor(
+        sourceOptions[index],
+        index,
+        firstOnly,
+      );
+      if (!snapshot.items.length) {
+        snapshot.warning = "当前色值下未读取到详情图";
+      } else if (snapshot.signature) {
+        const duplicateOf = seenColorSignatures.get(snapshot.signature);
+        if (duplicateOf) {
+          snapshot.items = [];
+          snapshot.skipped = true;
+          snapshot.warning = `详情图与色值“${duplicateOf}”相同，可能已售罄，已跳过`;
+        } else {
+          seenColorSignatures.set(snapshot.signature, snapshot.name);
+        }
+      }
+      colors.push(snapshot);
+    }
+    return {
+      colors,
+      pageTitle: product.title,
+      pageUrl: location.href,
+      warning: colorOptions.length
+        ? ""
+        : "未检测到可选色值，已按当前详情页颜色采集",
+      stopped,
+    };
+  }
+
   function selectedProducts() {
     return [...state.selected.values()]
       .filter((product) => !state.excludedProductIds.has(product.id))
@@ -1300,7 +1932,7 @@
   function addAsset(
     assets,
     usedPaths,
-    { product, color, index, image, fullMode, titleEnabled },
+    { product, color, index, image, fullMode, detailMode, titleEnabled },
   ) {
     if (!image?.baseUrl) return;
     const titleSegment = titleEnabled
@@ -1312,7 +1944,11 @@
     )}${titleSegment}`;
     const safeColor = safeSegment(color.name, `色值${index + 1}`, 50);
     let relativeBase;
-    if (fullMode) {
+    if (detailMode) {
+      relativeBase = `${IMAGE_FOLDER}/${product.id}${titleSegment}_详情图_${safeColor}_${pad2(
+        index + 1,
+      )}`;
+    } else if (fullMode) {
       relativeBase = `${IMAGE_FOLDER}/${productFolder}/${safeColor}/${pad2(
         index + 1,
       )}`;
@@ -1388,9 +2024,13 @@
           addAsset(assets, usedPaths, {
             product,
             color,
-            index: mode === "full" ? imageIndex : colorIndex,
+            index:
+              mode === "full" || mode === "detail"
+                ? imageIndex
+                : colorIndex,
             image,
-            fullMode: mode === "full",
+          fullMode: mode === "full",
+          detailMode: mode === "detail",
             titleEnabled,
           });
         });
@@ -1476,6 +2116,152 @@
       },
     );
     await Promise.all(workers);
+  }
+
+  function buildImageLinksText(assets) {
+    const lines = [];
+    const seen = new Set();
+    for (const asset of assets) {
+      const url = isHttpUrl(asset.sourceUrl) ? asset.sourceUrl : "";
+      if (!url) continue;
+      if (seen.has(url)) continue;
+      seen.add(url);
+      lines.push(url);
+    }
+    return lines;
+  }
+
+  function uniqueLinkAssets(assets) {
+    const seen = new Set();
+    return assets.filter((asset) => {
+      const url = isHttpUrl(asset.sourceUrl) ? asset.sourceUrl : "";
+      if (!url || seen.has(url)) return false;
+      seen.add(url);
+      return true;
+    });
+  }
+
+  function previewAndFilterLinkAssets(assets, options = {}) {
+    const entries =
+      options.uniqueByUrl === false ? assets : uniqueLinkAssets(assets);
+    if (!entries.length) return Promise.resolve([]);
+    const title = options.title || "图片链接预览与筛选";
+    const description =
+      options.description || "点击“删除”后，该图片链接不会写入 TXT";
+    const confirmLabel = options.confirmLabel || "确认导出";
+    const cancelLabel = options.cancelLabel || "取消导出";
+    const keyForAsset = (asset) =>
+      options.uniqueByUrl === false ? asset.usedBase : asset.sourceUrl;
+
+    return new Promise((resolve) => {
+      const overlay = document.createElement("section");
+      overlay.id = "tec-link-preview";
+      overlay.innerHTML = `
+        <div class="tec-link-preview-dialog" role="dialog" aria-modal="true" aria-label="${title}">
+          <div class="tec-link-preview-head">
+            <div>
+              <strong>${title}</strong>
+              <span>${description}</span>
+            </div>
+            <button type="button" class="tec-icon-button" id="tec-link-preview-close" title="取消并关闭">×</button>
+          </div>
+          <div class="tec-link-preview-summary">
+            <span id="tec-link-preview-count"></span>
+            <button type="button" class="tec-action" id="tec-link-preview-restore">恢复全部</button>
+          </div>
+          <div class="tec-link-preview-grid" id="tec-link-preview-grid"></div>
+          <div class="tec-link-preview-actions">
+              <button type="button" class="tec-action" id="tec-link-preview-cancel">${cancelLabel}</button>
+              <button type="button" class="tec-action primary" id="tec-link-preview-confirm">${confirmLabel}</button>
+          </div>
+        </div>
+      `;
+      document.documentElement.appendChild(overlay);
+
+      const grid = overlay.querySelector("#tec-link-preview-grid");
+      const count = overlay.querySelector("#tec-link-preview-count");
+      const confirm = overlay.querySelector("#tec-link-preview-confirm");
+      const restore = overlay.querySelector("#tec-link-preview-restore");
+
+      for (const [index, asset] of entries.entries()) {
+        const card = document.createElement("article");
+        card.className = "tec-link-preview-card";
+        card.dataset.assetKey = keyForAsset(asset);
+        card.innerHTML = `
+          <div class="tec-link-preview-image-wrap">
+            <img loading="lazy" alt="">
+            <span class="tec-link-preview-index">${index + 1}</span>
+            <button type="button" class="tec-link-preview-remove">删除</button>
+          </div>
+          <div class="tec-link-preview-meta"></div>
+        `;
+        const image = card.querySelector("img");
+        image.src = asset.thumbnailUrl || asset.sourceUrl;
+        image.alt = asset.productTitle || `图片 ${index + 1}`;
+        image.addEventListener("error", () => {
+          image.replaceWith(
+            Object.assign(document.createElement("div"), {
+              className: "tec-link-preview-broken",
+              textContent: "图片预览加载失败",
+            }),
+          );
+        });
+        card.querySelector(".tec-link-preview-meta").textContent =
+          asset.sourceUrl;
+        grid.appendChild(card);
+      }
+
+      const refreshCount = () => {
+        const removed = grid.querySelectorAll(
+          ".tec-link-preview-card.tec-link-removed",
+        ).length;
+        const kept = entries.length - removed;
+        count.textContent = `共 ${entries.length} 张，保留 ${kept} 张，删除 ${removed} 张`;
+        confirm.disabled = kept === 0;
+      };
+
+      const finish = (confirmed) => {
+        const selectedUrls = confirmed
+          ? [...grid.querySelectorAll(".tec-link-preview-card:not(.tec-link-removed)")]
+              .map((card) => card.dataset.assetKey)
+          : [];
+        overlay.remove();
+        resolve(
+          confirmed
+            ? entries.filter((asset) =>
+                selectedUrls.includes(keyForAsset(asset)),
+              )
+            : null,
+        );
+      };
+
+      grid.addEventListener("click", (event) => {
+        const button = event.target.closest(".tec-link-preview-remove");
+        if (!button) return;
+        const card = button.closest(".tec-link-preview-card");
+        const removed = card.classList.toggle("tec-link-removed");
+        button.textContent = removed ? "恢复" : "删除";
+        refreshCount();
+      });
+      overlay
+        .querySelector("#tec-link-preview-close")
+        .addEventListener("click", () => finish(false));
+      overlay
+        .querySelector("#tec-link-preview-cancel")
+        .addEventListener("click", () => finish(false));
+      confirm.addEventListener("click", () => finish(true));
+      restore.addEventListener("click", () => {
+        for (const card of grid.querySelectorAll(
+          ".tec-link-preview-card.tec-link-removed",
+        )) {
+          card.classList.remove("tec-link-removed");
+          card.querySelector(".tec-link-preview-remove").textContent = "删除";
+        }
+        refreshCount();
+      });
+      refreshCount();
+      overlay.querySelector("#tec-link-preview-close").focus();
+    });
   }
 
   function triggerDownload(blob, fileName) {
@@ -1588,6 +2374,230 @@
     );
   }
 
+  function appendEligibleProductsToPagingJob(job) {
+    const recommendationSections = findRecommendationSections();
+    const existingIds = new Set(job.products.map((product) => product.id));
+    const selectedIds =
+      job.pagingPage === 1 && state.selected.size
+        ? new Set(state.selected.keys())
+        : null;
+    let added = 0;
+    for (const card of document.querySelectorAll(CARD_SELECTOR)) {
+      if (
+        job.targetProducts > 0 &&
+        job.products.length >= job.targetProducts
+      ) {
+        break;
+      }
+      if (
+        productCardExclusion(card, recommendationSections, job.filterAds)
+      ) {
+        continue;
+      }
+      const cardId = extractProductId(card);
+      if (selectedIds && !selectedIds.has(cardId)) continue;
+      const info = extractCardInfo(card);
+      if (!info || existingIds.has(info.id)) continue;
+      const { card: ignoredCard, ...product } = info;
+      product.title = job.titleEnabled ? product.title : "";
+      job.products.push(product);
+      existingIds.add(product.id);
+      added += 1;
+    }
+    return added;
+  }
+
+  function findLoadMoreControl() {
+    const loadMorePattern =
+      /^(?:see\s*more|show\s*more|load\s*more|more\s+items|查看更多|加载更多)$/i;
+    const nextPattern = /^(?:next(?:\s+page)?|下一页)$/i;
+    const controls = [
+      ...document.querySelectorAll("button,a,[role='button'],[aria-label]"),
+    ].filter((element) => isVisible(element));
+    const loadMore = controls.find((element) => {
+      const text = normalizeText(element.innerText || element.textContent);
+      const aria = normalizeText(element.getAttribute("aria-label"));
+      return loadMorePattern.test(text) || loadMorePattern.test(aria);
+    });
+    if (loadMore) return loadMore;
+    return (
+      controls.find((element) => {
+        const text = normalizeText(element.innerText || element.textContent);
+        const aria = normalizeText(element.getAttribute("aria-label"));
+        if (!nextPattern.test(text) && !nextPattern.test(aria)) return false;
+        const rect = element.getBoundingClientRect();
+        return rect.top >= window.innerHeight * 0.45;
+      }) || null
+    );
+  }
+
+  function findNextPageUrl() {
+    const nextLink = [...document.querySelectorAll("a[href]")].find((anchor) => {
+      if (!isVisible(anchor)) return false;
+      const text = normalizeText(anchor.innerText || anchor.textContent);
+      const aria = normalizeText(anchor.getAttribute("aria-label"));
+      const rel = (anchor.getAttribute("rel") || "").toLowerCase();
+      return (
+        rel.split(/\s+/).includes("next") ||
+        /^(?:next(?:\s+page)?|下一页)$/i.test(text) ||
+        /^(?:next(?:\s+page)?|下一页)$/i.test(aria)
+      );
+    });
+    if (nextLink?.href && nextLink.href !== location.href) return nextLink.href;
+
+    const current = new URL(location.href);
+    const pageValue =
+      current.searchParams.get("page") ||
+      current.searchParams.get("pageNum") ||
+      current.searchParams.get("page_no");
+    if (/^\d+$/.test(pageValue || "")) {
+      const next = new URL(current.href);
+      const key = next.searchParams.has("page")
+        ? "page"
+        : next.searchParams.has("pageNum")
+          ? "pageNum"
+          : "page_no";
+      next.searchParams.set(key, String(Number(pageValue) + 1));
+      return next.href;
+    }
+    return "";
+  }
+
+  async function loadNextListBatch(job, signal) {
+    const beforeIds = new Set(
+      [...document.querySelectorAll(CARD_SELECTOR)]
+        .map(extractProductId)
+        .filter(Boolean),
+    );
+    const beforeCount = beforeIds.size;
+    const control = findLoadMoreControl();
+    if (control) {
+      control.scrollIntoView({ block: "center", inline: "nearest" });
+      control.click();
+    } else {
+      const scroller = document.scrollingElement || document.documentElement;
+      scroller.scrollTo({ top: scroller.scrollHeight, behavior: "smooth" });
+    }
+
+    const loaded = await waitFor(() => {
+      if (signal.aborted) return "aborted";
+      const ids = [...document.querySelectorAll(CARD_SELECTOR)]
+        .map(extractProductId)
+        .filter(Boolean);
+      return ids.length > beforeCount ||
+        ids.some((id) => !beforeIds.has(id))
+        ? "loaded"
+        : null;
+    }, 9000, 250);
+    if (loaded === "aborted") return "aborted";
+    if (loaded === "loaded") return "loaded";
+
+    const nextUrl = findNextPageUrl();
+    if (nextUrl) {
+      job.status = "paging";
+      job.pagingPage = (job.pagingPage || 1) + 1;
+      job.updatedAt = new Date().toISOString();
+      await saveActiveJob(job);
+      appendLog(`自动翻页：打开第 ${job.pagingPage} 页`);
+      window.location.assign(nextUrl);
+      return "navigated";
+    }
+    return "ended";
+  }
+
+  async function continueAutoPaging(job) {
+    if (state.running) return;
+    const meta = MODE_META[job.mode];
+    if (!meta) return;
+    applyJobPresentation(job);
+    state.pausedJob = job;
+    const abortController = new AbortController();
+    state.abortController = abortController;
+    state.running = true;
+    setRunning(true);
+
+    try {
+      appendLog("自动翻页：收集当前页面商品");
+      while (!abortController.signal.aborted) {
+        const added = appendEligibleProductsToPagingJob(job);
+        job.status = "paging";
+        await saveActiveJob(job);
+        setProgress(
+          Math.min(
+            18,
+            2 + Math.round(((job.pagingPage || 1) / job.pageLimit) * 16),
+          ),
+          `自动翻页：第 ${job.pagingPage || 1}/${job.pageLimit} 页，` +
+            `已收集 ${job.products.length} 个商品` +
+            (job.targetProducts > 0
+              ? `，目标 ${job.targetProducts} 个`
+              : ""),
+        );
+        appendLog(
+          `第 ${job.pagingPage || 1} 页新增 ${added} 个商品，累计 ${job.products.length} 个`,
+        );
+
+        const targetReached =
+          job.targetProducts > 0 &&
+          job.products.length >= job.targetProducts;
+        const pageReached =
+          (job.pagingPage || 1) >= Math.max(1, job.pageLimit || 1);
+        if (targetReached || pageReached) break;
+
+        const result = await loadNextListBatch(job, abortController.signal);
+        if (result === "aborted" || abortController.signal.aborted) {
+          job.status = "paused";
+          job.pauseReason = "自动翻页已停止";
+          await saveActiveJob(job);
+          setProgress(0, job.pauseReason);
+          return;
+        }
+        if (result === "navigated") return;
+        if (result === "ended") {
+          if (!Array.isArray(job.warnings)) job.warnings = [];
+          job.warnings.push({
+            type: "paging",
+            message: `未找到下一页，已在第 ${job.pagingPage || 1} 页停止`,
+          });
+          appendLog(job.warnings.at(-1).message);
+          break;
+        }
+        job.pagingPage = (job.pagingPage || 1) + 1;
+        await saveActiveJob(job);
+        await sleep(450);
+      }
+
+      if (!job.products.length) {
+        job.status = "paused";
+        job.pauseReason = "自动翻页没有找到可采集商品";
+        await saveActiveJob(job);
+        setProgress(0, job.pauseReason);
+        appendLog(job.pauseReason);
+        return;
+      }
+      job.pagingComplete = true;
+      job.status = "running";
+      await saveActiveJob(job);
+      appendLog(`自动翻页完成，共收集 ${job.products.length} 个商品`);
+    } finally {
+      state.abortController = null;
+      state.running = false;
+      setRunning(false);
+    }
+
+    await runCollection(job.mode, job);
+  }
+
+  async function startAutoPagedCollection(mode) {
+    const job = createJob(mode, []);
+    job.status = "paging";
+    job.pagingComplete = false;
+    job.pagingPage = 1;
+    job.products = [];
+    job.completedProductIds = [];
+    await continueAutoPaging(job);
+  }
+
   function createJob(mode, products) {
     const timestamp = makeTimestamp();
     return {
@@ -1596,6 +2606,17 @@
       mode,
       status: "running",
       titleEnabled: state.collectTitle,
+      detailFirstOnly: mode === "detail" ? state.detailFirstOnly : false,
+      exportLinksOnly: state.exportLinksOnly,
+      detailPhase: mode === "detail" ? "main" : "",
+      autoPaging: state.autoPaging,
+      pageLimit: state.pageLimit,
+      targetProducts: state.targetProducts,
+      filterAds: state.filterAds,
+      filterDuplicates: state.filterDuplicates,
+      pagingPage: 1,
+      pagingComplete: !state.autoPaging,
+      pagingStartUrl: location.href,
       createdAt: timestamp.iso,
       startedAtLocal: timestamp.local,
       rootFolder: `${MODE_META[mode].label}+${timestamp.folder}`,
@@ -1611,6 +2632,8 @@
       skippedColorCount: 0,
       defaultFallbackCount: 0,
       quickLookFailureCount: 0,
+      detailPageFailureCount: 0,
+      duplicatesSkipped: 0,
       pauseReason: "",
       updatedAt: timestamp.iso,
     };
@@ -1629,6 +2652,22 @@
       }。完成验证后点击“继续采集”`,
     );
     appendLog(reason);
+  }
+
+  async function navigateToDetailProduct(job, product, index) {
+    const link = String(product.link || "");
+    if (!/^https:\/\/[^/]*temu\.com\//i.test(link)) {
+      return false;
+    }
+    job.status = "navigating";
+    job.currentProductId = product.id;
+    job.currentIndex = index;
+    job.updatedAt = new Date().toISOString();
+    await saveActiveJob(job);
+    appendLog(`进入详情页：${product.id}`);
+    setProgress(2, `详情图采集：进入商品 ${index + 1}/${job.products.length}`);
+    window.location.assign(link);
+    return true;
   }
 
   async function runCollection(mode, existingJob = null) {
@@ -1666,15 +2705,14 @@
     }
 
     const job = existingJob || createJob(mode, products);
+    if (mode === "detail" && !job.detailPhase) job.detailPhase = "main";
     const rootFolder = job.rootFolder;
     const captures = new Map(Object.entries(job.captures || {}));
     const warnings = Array.isArray(job.warnings) ? job.warnings : [];
     const failedProducts = new Set(job.failedProductIds || []);
     const completedProducts = new Set(job.completedProductIds || []);
     if (!Array.isArray(job.partialProductIds)) job.partialProductIds = [];
-    state.collectTitle = job.titleEnabled !== false;
-    const titleToggle = document.querySelector("#tec-collect-title");
-    if (titleToggle) titleToggle.checked = state.collectTitle;
+    applyJobPresentation(job);
     job.status = "running";
     job.pauseReason = "";
     await saveActiveJob(job);
@@ -1764,6 +2802,13 @@
           const product = products[index];
           const isPartial = job.partialProductIds.includes(product.id);
           if (captures.has(product.id) && !isPartial) continue;
+          if (
+            mode === "detail" &&
+            job.detailPhase === "main" &&
+            failedProducts.has(product.id)
+          ) {
+            continue;
+          }
           if (isPartial) {
             captures.delete(product.id);
             delete job.captures[product.id];
@@ -1786,15 +2831,44 @@
             2 + Math.round((index / products.length) * 18),
             `${meta.label}：读取商品 ${index + 1}/${products.length}`,
           );
-          appendLog(`读取 ${product.id} 的 Quick look`);
+          if (mode === "detail") {
+            const pageProductId = currentDetailProductId();
+            if (pageProductId !== product.id) {
+              const navigated = await navigateToDetailProduct(
+                job,
+                product,
+                index,
+              );
+              if (navigated) return;
+              failedProducts.add(product.id);
+              addWarning({
+                productId: product.id,
+                type: "detail-navigation",
+                message: "商品缺少可用的详情页链接",
+              });
+              appendLog(`${product.id}：缺少详情页链接，稍后重试`);
+              await saveJobProgress();
+              continue;
+            }
+            appendLog(`读取 ${product.id} 的详情页`);
+          } else {
+            appendLog(`读取 ${product.id} 的 Quick look`);
+          }
           job.currentProductId = product.id;
           job.currentIndex = index;
           await saveActiveJob(job);
-          const capture = await captureViaQuickLook(
-            product,
-            mode === "full",
-            abortController.signal,
-          );
+          const capture =
+            mode === "detail"
+              ? await captureViaDetailPage(
+                  product,
+                  job.detailFirstOnly === true,
+                  abortController.signal,
+                )
+              : await captureViaQuickLook(
+                  product,
+                  mode === "full",
+                  abortController.signal,
+                );
           if (capture.stopped) {
             if (capture.colors?.length) {
               commitCapture(product, capture, false);
@@ -1803,19 +2877,29 @@
             stoppedDuringCapture = true;
             break;
           }
-          const isQuickLookFailure =
-            Boolean(capture.warning) && !capture.colors?.length;
-          if (isQuickLookFailure) {
+          const capturedImageCount = (capture.colors || []).reduce(
+            (count, color) => count + (color.items?.length || 0),
+            0,
+          );
+          const isCaptureFailure = capturedImageCount === 0;
+          if (isCaptureFailure) {
             consecutiveQuickLookFailures += 1;
             failedProducts.add(product.id);
-            job.quickLookFailureCount =
-              (job.quickLookFailureCount || 0) + 1;
+            if (mode === "detail") {
+              job.detailPageFailureCount =
+                (job.detailPageFailureCount || 0) + 1;
+            } else {
+              job.quickLookFailureCount =
+                (job.quickLookFailureCount || 0) + 1;
+            }
             addWarning({
               productId: product.id,
-              type: "quick-look",
-              message: capture.warning,
+              type: mode === "detail" ? "detail-page" : "quick-look",
+              message: capture.warning || "未读取到任何图片",
             });
-            appendLog(`${product.id}：${capture.warning}，稍后重试`);
+            appendLog(
+              `${product.id}：${capture.warning || "未读取到任何图片"}，稍后重试`,
+            );
           } else if (capture.colors?.length) {
             consecutiveQuickLookFailures = 0;
             commitCapture(product, capture);
@@ -1823,7 +2907,9 @@
           await saveJobProgress();
           if (consecutiveQuickLookFailures >= 3) {
             const message =
-              "连续 3 个商品无法打开 Quick look，采集已暂停；请检查登录状态、页面验证或网络，完成后点击“继续采集”";
+              mode === "detail"
+                ? "连续 3 个商品详情页无法读取图片，采集已暂停；请检查登录状态、页面验证或网络，完成后点击“继续采集”"
+                : "连续 3 个商品无法打开 Quick look，采集已暂停；请检查登录状态、页面验证或网络，完成后点击“继续采集”";
             addWarning({
               productId: product.id,
               type: "batch",
@@ -1838,7 +2924,34 @@
       }
 
       if (
+        mode === "detail" &&
+        !stoppedDuringCapture &&
+        !abortController.signal.aborted &&
+        failedProducts.size &&
+        job.detailPhase !== "retry"
+      ) {
+        job.detailPhase = "retry";
+        await saveJobProgress();
+        const retryProduct = products.find(
+          (product) =>
+            failedProducts.has(product.id) &&
+            /^https:\/\/[^/]*temu\.com\//i.test(product.link || ""),
+        );
+        if (
+          retryProduct &&
+          (await navigateToDetailProduct(
+            job,
+            retryProduct,
+            products.indexOf(retryProduct),
+          ))
+        ) {
+          return;
+        }
+      }
+
+      if (
         mode !== "simple" &&
+        mode !== "detail" &&
         !stoppedDuringCapture &&
         !abortController.signal.aborted &&
         failedProducts.size
@@ -1875,7 +2988,11 @@
             stoppedDuringCapture = true;
             break;
           }
-          if (capture.colors?.length) {
+          const retryImageCount = (capture.colors || []).reduce(
+            (count, color) => count + (color.items?.length || 0),
+            0,
+          );
+          if (retryImageCount > 0) {
             commitCapture(product, capture);
             appendLog(`${product.id}：重试成功`);
           } else {
@@ -1911,17 +3028,124 @@
         0,
         products.length - processedProductCount,
       );
-      const assets = buildAssets(
+      let assets = buildAssets(
         mode,
         captureProducts,
         captures,
         job.titleEnabled,
       );
+      if (job.filterDuplicates) {
+        await loadCollectedUrls();
+        const duplicateResult = filterDuplicateAssets(assets, true);
+        assets = duplicateResult.assets;
+        job.duplicatesSkipped =
+          (job.duplicatesSkipped || 0) + duplicateResult.skipped;
+        if (duplicateResult.skipped) {
+          appendLog(
+            `跳过重复或已采集链接 ${duplicateResult.skipped} 条`,
+          );
+        }
+      }
       if (!assets.length) {
         job.status = "paused";
         job.pauseReason = stoppedDuringCapture
           ? "用户停止，当前没有可保存的图片"
-          : "没有采集到可下载的图片";
+          : job.duplicatesSkipped
+            ? `没有新图片：已跳过 ${job.duplicatesSkipped} 条重复或已采集链接`
+            : "没有采集到可下载的图片";
+        await saveJobProgress();
+        setProgress(0, job.pauseReason);
+        appendLog(job.pauseReason);
+        return;
+      }
+
+      if (job.exportLinksOnly) {
+        setProgress(92, `${meta.label}：等待图片链接筛选`);
+        appendLog(`已读取 ${assets.length} 张图片，请在预览窗口筛选后导出`);
+        const filteredAssets = await previewAndFilterLinkAssets(assets);
+        if (filteredAssets === null) {
+          job.status = "paused";
+          job.pauseReason = "已取消图片筛选，未生成链接文档";
+          await saveJobProgress();
+          setProgress(0, job.pauseReason);
+          appendLog(job.pauseReason);
+          return;
+        }
+        const linkLines = buildImageLinksText(filteredAssets);
+        if (!linkLines.length) {
+          job.status = "paused";
+          job.pauseReason = "没有采集到可导出的图片链接";
+          await saveJobProgress();
+          setProgress(0, job.pauseReason);
+          appendLog(job.pauseReason);
+          return;
+        }
+        const linksWereStopped =
+          abortController.signal.aborted || stoppedDuringCapture;
+        setProgress(93, `${meta.label}：正在生成图片链接文档`);
+        appendLog(`共整理出 ${linkLines.length} 条图片链接，不下载图片文件`);
+        const linkBlob = new Blob(
+          [`\uFEFF${linkLines.join("\r\n")}\r\n`],
+          { type: "text/plain;charset=utf-8" },
+        );
+        const saveResult = await saveArchive(
+          linkBlob,
+          `${rootFolder}.txt`,
+        );
+        await rememberCollectedUrls(
+          filteredAssets.map((asset) => asset.sourceUrl),
+        );
+        if (saveResult.warning) appendLog(saveResult.warning);
+        setProgress(
+          100,
+          linksWereStopped
+            ? `已停止：保留 ${linkLines.length} 条图片链接`
+            : `${meta.label}完成：已导出 ${linkLines.length} 条图片链接`,
+        );
+        appendLog(
+          `${
+            saveResult.method === "directory" ? "已保存到" : "链接文档已生成："
+          }${
+            saveResult.directoryName
+              ? `${saveResult.directoryName}/${rootFolder}.txt`
+              : `${rootFolder}.txt`
+          }`,
+        );
+        if (linksWereStopped) {
+          job.status = "paused";
+          job.pauseReason =
+            "用户停止，可点击“继续采集”从未完成商品恢复";
+          await saveJobProgress();
+        } else if (failedProducts.size) {
+          job.status = "paused";
+          job.pauseReason = `${failedProducts.size} 个商品重试后仍失败，可点击“重试失败项”再次处理`;
+          await saveJobProgress();
+        } else {
+          await clearActiveJob();
+        }
+        return;
+      }
+
+      setProgress(88, `${meta.label}：等待图片小图预览`);
+      const previewedAssets = await previewAndFilterLinkAssets(assets, {
+        uniqueByUrl: false,
+        title: "采集后图片小图预览",
+        description: "点击“删除”后，该图片不会打包进 ZIP",
+        confirmLabel: "确认打包",
+        cancelLabel: "取消打包",
+      });
+      if (previewedAssets === null) {
+        job.status = "paused";
+        job.pauseReason = "已取消图片预览，未生成 ZIP";
+        await saveJobProgress();
+        setProgress(0, job.pauseReason);
+        appendLog(job.pauseReason);
+        return;
+      }
+      assets = previewedAssets;
+      if (!assets.length) {
+        job.status = "paused";
+        job.pauseReason = "预览中删除了全部图片，未生成 ZIP";
         await saveJobProgress();
         setProgress(0, job.pauseReason);
         appendLog(job.pauseReason);
@@ -1951,7 +3175,7 @@
           asset.downloadUrl = result.downloadedUrl;
           asset.mime = result.mime;
           asset.status = "success";
-          zip.file(`${rootFolder}/${asset.filePath}`, result.blob);
+          zip.file(asset.filePath, result.blob);
         } catch (error) {
           if (error.name === "AbortError") {
             asset.status = "stopped";
@@ -1984,54 +3208,6 @@
       const wasStopped =
         abortController.signal.aborted || stoppedDuringCapture;
       if (wasStopped) job.pauseReason = "用户停止";
-      const batchStopReason = wasStopped
-        ? job.pauseReason
-        : failedProducts.size
-          ? `${failedProducts.size} 个商品重试后仍失败`
-          : "";
-      const resultJson = {
-        mode,
-        modeLabel: meta.label,
-        titleEnabled: job.titleEnabled,
-        startedAt: job.createdAt,
-        startedAtLocal: job.startedAtLocal,
-        finishedAt: new Date().toISOString(),
-        zipRoot: rootFolder,
-        stopped: wasStopped,
-        summary: {
-          products: processedProductCount,
-          selectedProducts: products.length,
-          processedProducts: processedProductCount,
-          unprocessedProducts: unprocessedProductCount,
-          failedProducts: failedProducts.size,
-          imageTotal: assets.length,
-          imageSucceeded: succeeded.length,
-          imageFailed: assets.length - succeeded.length,
-          colorsSkipped: job.skippedColorCount || 0,
-          defaultFallbacks: job.defaultFallbackCount || 0,
-          quickLookFailures: job.quickLookFailureCount || 0,
-          batchStopReason,
-        },
-        warnings,
-        records: assets.map((asset) => ({
-          productId: asset.productId,
-          productTitle: asset.productTitle,
-          colorName: asset.colorName,
-          colorId: asset.colorId,
-          carouselIndex: asset.carouselIndex,
-          sourceUrl: asset.sourceUrl,
-          thumbnailUrl: asset.thumbnailUrl,
-          downloadUrl: asset.downloadUrl || "",
-          filePath: asset.filePath,
-          mime: asset.mime || "",
-          status: asset.status,
-          error: asset.error,
-        })),
-      };
-      zip.file(
-        `${rootFolder}/采集结果.json`,
-        `${JSON.stringify(resultJson, null, 2)}\n`,
-      );
       if (job.titleEnabled) {
         const outputProductIds = new Set(
           assets.map((asset) => asset.productId),
@@ -2053,7 +3229,7 @@
           try {
             const titleWorkbook =
               await globalThis.TecTitleWorkbook.createBlob(titleRows);
-            zip.file(`${rootFolder}/商品标题.xlsx`, titleWorkbook);
+            zip.file("商品标题.xlsx", titleWorkbook);
           } catch (error) {
             addWarning({
               type: "title-workbook",
@@ -2072,6 +3248,9 @@
         },
       );
       const saveResult = await saveArchive(blob, `${rootFolder}.zip`);
+      await rememberCollectedUrls(
+        succeeded.map((asset) => asset.sourceUrl),
+      );
       if (saveResult.warning) appendLog(saveResult.warning);
       setProgress(
         100,
@@ -2084,7 +3263,9 @@
           assets.length - succeeded.length
         }，色值跳过 ${job.skippedColorCount || 0}，默认回退 ${
           job.defaultFallbackCount || 0
-        }，待重试商品 ${failedProducts.size}`,
+        }，重复跳过 ${job.duplicatesSkipped || 0}，待重试商品 ${
+          failedProducts.size
+        }`,
       );
       appendLog(
         `${saveResult.method === "directory" ? "已保存到" : "ZIP 已生成："}${

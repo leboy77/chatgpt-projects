@@ -41,7 +41,9 @@
       "qa_status",
       "coverage",
       "variant_type",
+      "type",
       "muse_delta_e",
+      "muse_url",
       "sha256",
     ];
     const rows = [fields.join(",")];
@@ -99,6 +101,7 @@
       mask_source: asset.mask_source,
       background_mode: asset.background_mode,
       reference_index: asset.reference_index,
+      muse_url: asset.muse_url || null,
       blob,
     };
     await store.putAsset(record);
@@ -113,16 +116,15 @@
       job_id: job.id,
       kind: job.kind,
       metadata,
-      outputs: outputs.map(({ thumbnail, id, job_id, type, size, display, ...rest }) => {
+      outputs: outputs.map(({ thumbnail, id, job_id, size, display, ...rest }) => {
         void thumbnail;
         void id;
         void job_id;
-        void type;
         void size;
         void display;
         return rest;
       }),
-      notes: "所有图片、CSV 和 JSON 清单均由 Visual Forge 扩展在浏览器内生成。",
+      notes: "所有媒体文件、CSV 和 JSON 清单均由 Visual Forge 扩展在浏览器内生成。",
     };
     const jsonBlob = new Blob([JSON.stringify(manifest, null, 2)], {
       type: "application/json",
@@ -185,36 +187,87 @@
           },
         };
         sourceAsset = fileAsAsset(files[0]);
-      } else if (job.kind === "logo_color_batch") {
-        if (!files.length) throw new Error("至少需要 1 个 Logo");
-        if (files.length > 100) throw new Error("单次任务最多处理 100 个 Logo");
-        const color = core.normalizeColor(options.color);
-        const outputs = [];
-        const failures = [];
-        for (let index = 0; index < files.length; index += 1) {
-          await control.waitIfPaused?.();
-          try {
-            const result = await core.recolorLogo(files[index], [color], options);
-            outputs.push(...result);
-          } catch (error) {
-            failures.push({ source: files[index].name, error: error.message });
-          }
-          await progress(Math.round(((index + 1) / files.length) * 95), `已处理 Logo ${index + 1}/${files.length}`);
+      } else if (job.kind === "logo_image_generate") {
+        if (files.length < 2) {
+          throw new Error("Logo 重绘任务需要一张主图和至少一张 Muse 生成图");
         }
-        if (!outputs.length) throw new Error("所有 Logo 均处理失败，请检查源文件");
-        processed = {
-          outputs,
-          metadata: { mode: "many_logos_one_color", color, source_count: files.length, failures },
-        };
+        processed = await core.finalizeLogoDesign(
+          files[0],
+          files.slice(1),
+          options,
+          progress,
+        );
+        sourceAsset = fileAsAsset(files[0]);
+      } else if (job.kind === "logo_image_recolor") {
+        if (files.length < 1 || files.length > 2) {
+          throw new Error("主图 Logo 同色任务需要 1 张商品图，可选 1 张遮罩");
+        }
+        const mask =
+          files
+            .slice(1)
+            .find((file) => file.name.startsWith("__logo_mask__")) || null;
+        await control.waitIfPaused?.();
+        processed = await core.recolorImageLogos(
+          files[0],
+          options.color,
+          options.source_color,
+          options,
+          progress,
+          mask,
+        );
         sourceAsset = fileAsAsset(files[0]);
       } else if (job.kind === "product_generate") {
-        const provider = await model.createProvider();
-        processed = await core.buildProductVariants(
-          options,
-          provider,
-          progress,
-          control.waitIfPaused,
-        );
+        if (options.pre_generated === true) {
+          if (files.length < 2) {
+            throw new Error("产品裂变任务需要一张输入主图和至少一张生成图");
+          }
+          const prompts = Array.isArray(options.prompts)
+            ? options.prompts
+            : [];
+          if (prompts.length !== files.length - 1) {
+            throw new Error("生成图数量与提示词方向数量不一致");
+          }
+          processed = await core.finalizeCopyVariants(
+            files[0],
+            files.slice(1),
+            prompts,
+            options,
+            progress,
+          );
+          processed.metadata.provider = options.provider || "unknown";
+          sourceAsset = fileAsAsset(files[0]);
+        } else if (options.generation_engine === "muse") {
+          if (files.length < 2) {
+            throw new Error("Muse 文案生图需要主图和至少一张生成图");
+          }
+          const prompts = Array.isArray(options.prompts)
+            ? options.prompts
+            : [];
+          if (prompts.length !== files.length - 1) {
+            throw new Error("Muse 生成图数量与文案方向数量不一致");
+          }
+          processed = await core.finalizeCopyVariants(
+            files[0],
+            files.slice(1),
+            prompts,
+            options,
+            progress,
+          );
+          sourceAsset = fileAsAsset(files[0]);
+        } else {
+          if (files.length !== 1) {
+            throw new Error("文案生图需要且只能提供一张商品主图");
+          }
+          const provider = await model.createProvider();
+          processed = await core.buildProductVariants(
+            options,
+            provider,
+            files[0],
+            progress,
+            control.waitIfPaused,
+          );
+          sourceAsset = fileAsAsset(files[0]);
+        }
       } else if (job.kind === "product_color_finalize") {
         if (files.length < 2) throw new Error("商品配色需要主图和至少一张 Muse 生成图");
         const master = files[0];
@@ -245,9 +298,63 @@
           progress,
         );
         sourceAsset = fileAsAsset(files[0]);
+      } else if (job.kind === "product_video_generate") {
+        if (files.length < 2) {
+          throw new Error("产品视频任务需要一张商品主图和至少一个 Muse 视频");
+        }
+        const videoOutputs = files.slice(1).map((file, index) => ({
+          blob: file,
+          name:
+            file.name ||
+            `product-video-${String(index + 1).padStart(2, "0")}.mp4`,
+          width: 0,
+          height: 0,
+          variant_type: "product_video",
+          display: true,
+          prompt: options.prompt || "",
+          direction: `video-${String(index + 1).padStart(2, "0")}`,
+        }));
+        processed = {
+          outputs: videoOutputs,
+          metadata: {
+            mode: "muse_product_video",
+            source: files[0].name,
+            prompt: options.prompt || "",
+            prompt_template: options.prompt_template || "",
+            presentation_mode: options.presentation_mode || "product",
+            category: options.category || "auto",
+            duration_seconds: Number(options.duration_seconds || 8),
+            aspect_ratio: options.aspect_ratio || "9:16",
+            request_count: Number(options.request_count || 1),
+            successful_videos: videoOutputs.length,
+            failed_videos: Number(options.failed_videos || 0),
+            failed_requests: options.failed_requests || [],
+            face_policy: "visible_model_must_not_show_face",
+            provider: "muse",
+          },
+        };
+        sourceAsset = fileAsAsset(files[0]);
       } else {
         throw new Error(`未知任务类型：${job.kind}`);
       }
+
+      const linkableOutputs = processed.outputs.filter((output) =>
+        [
+          "muse_raw",
+          "logo_design",
+          "pattern_transfer",
+          "product_variant",
+          "product_video",
+        ].includes(output.variant_type),
+      );
+      const museImageUrls = Array.isArray(options.muse_image_urls)
+        ? options.muse_image_urls
+        : Array.isArray(options.muse_video_urls)
+          ? options.muse_video_urls
+          : [];
+      linkableOutputs.forEach((output, index) => {
+        if (museImageUrls[index]) output.muse_url = museImageUrls[index];
+      });
 
       const allAssets = [
         ...(sourceAsset ? [sourceAsset] : []),
@@ -270,6 +377,13 @@
       const message =
         job.kind === "product_color_finalize"
           ? `已输出 ${qa.pass + qa.review + qa.retry} 个颜色，通过 ${qa.pass}，复核 ${qa.review}，需重试 ${qa.retry}`
+          : job.kind === "product_video_generate"
+            ? `成功 ${Number(options.successful_videos || processed.outputs.length)} 个视频，` +
+              `失败 ${Number(options.failed_videos || 0)} 个`
+          : job.kind === "product_generate" &&
+              Number(options.failed_images || 0) > 0
+            ? `成功 ${Number(options.successful_images || processed.outputs.length)} 张，` +
+              `失败 ${Number(options.failed_images)} 张`
           : `已完成，共 ${records.filter((item) => item.display && item.type.startsWith("image/")).length} 张图片`;
       job = await update(jobId, {
         progress: 98,

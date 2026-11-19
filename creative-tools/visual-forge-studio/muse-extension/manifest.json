@@ -1,12 +1,13 @@
 {
   "manifest_version": 3,
   "name": "Visual Forge for Muse",
-  "version": "0.4.1",
+  "version": "0.13.1",
   "description": "在 Muse 页面中使用 /vf 指令调用扩展内置 Visual Forge 批量生产任务。",
   "permissions": [
     "activeTab",
     "storage",
     "tabs",
+    "downloads",
     "unlimitedStorage"
   ],
   "host_permissions": [
@@ -33,6 +34,8 @@
       ],
       "js": [
         "command-parser.js",
+        "prompt-templates.js",
+        "muse-response.js",
         "content.js"
       ],
       "run_at": "document_idle"
@@ -45,6 +48,8 @@
         "sidepanel.css",
         "sidepanel.js",
         "command-parser.js",
+        "prompt-templates.js",
+        "muse-response.js",
         "zip-builder.js",
         "local-core.js",
         "local-store.js",

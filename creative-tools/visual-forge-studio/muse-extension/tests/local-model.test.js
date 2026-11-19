@@ -101,3 +101,37 @@ test("calls an OpenAI-compatible Images endpoint directly", async () => {
   assert.equal(body.n, 1);
   assert.equal(await blob.text(), "image-bytes");
 });
+
+test("calls the image edit endpoint with the product master", async () => {
+  const { api } = loadModel();
+  let request = null;
+  globalThis.fetch = async (url, options) => {
+    request = { url, options };
+    return new Response(
+      JSON.stringify({
+        data: [{ b64_json: Buffer.from("edited-image").toString("base64") }],
+      }),
+      {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      },
+    );
+  };
+  const provider = await api.createProvider({
+    provider: "openai",
+    baseUrl: "https://example.com/v1",
+    model: "gpt-image-1",
+    apiKey: "sk-test",
+  });
+  const blob = await provider.edit(
+    "winter campaign",
+    "1024x1024",
+    "high",
+    new Blob(["master"], { type: "image/png" }),
+  );
+  assert.equal(request.url, "https://example.com/v1/images/edits");
+  assert.equal(request.options.body.get("model"), "gpt-image-1");
+  assert.equal(request.options.body.get("prompt"), "winter campaign");
+  assert.ok(request.options.body.get("image"));
+  assert.equal(await blob.text(), "edited-image");
+});

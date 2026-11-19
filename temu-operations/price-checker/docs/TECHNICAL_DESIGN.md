@@ -1,358 +1,428 @@
-# 全球价格申报核价助手技术设计
+# Temu 全球价格申报核价助手技术设计
 
-文档版本：v0.2  
-日期：2026-10-22
+文档版本：v1.0
+产品版本：0.8.0
+日期：2026-11-12
 
-## 1. 结论
+## 1. 技术结论
 
-推荐路线为：
+当前路线为：
 
-> Chrome Manifest V3 侧边栏扩展 + 页面 DOM 适配层 + 本地核价规则引擎 + 真实页面只读演练。
+> Manifest V3 侧边栏扩展 + DOM 内容脚本 + 本地价格规则 + Excel 双工作表解析 + Chrome 本地存储。
 
-选择该路线的原因：
+不依赖远程服务、Cookie 搬运、未公开接口或远程脚本。页面操作复用用户当前登录会话。
 
-- 扩展直接复用用户已登录的 Temu 会话，无 Cookie 搬运。
-- 页面 DOM 自动化与用户手工操作走同一条业务流程，提交链路可控。
-- 侧边栏适合 Excel 导入、国家参数编辑和提交前复核。
-- 不依赖未公开接口和令牌，安全边界比接口直连更清晰。
-- Playwright 继续用于开发期 E2E 和比特浏览器验证，但不作为最终用户运行方式。
+核心设计约束：
 
-页面接口直连只保留为后续只读增强选项。未经接口稳定性、鉴权、风控和字段含义验证，不进入生产提交流程。
+- 页面数据读取不完整时不得提交。
+- 页面币种未识别或汇率无效时不得提交。
+- 标签页锁定后，所有页面操作使用锁定标签 ID。
+- 提交结果未知时停止，不做自动重试。
 
-## 2. 浏览器运行条件
+## 2. 运行环境
 
-- 目标域：`https://agentseller.temu.com/*`
-- 目标路由：`/newon/product-select`
-- Chromium 148+，支持 Manifest V3 和 `chrome.sidePanel`
-- 用户已在目标配置中完成 Temu 登录
+- Chromium 148，Manifest V3。
+- 目标域：`https://agentseller.temu.com/*`。
+- 目标路由：`/newon/product-select`。
+- 扩展使用 `chrome.sidePanel`、`chrome.storage.local`、`chrome.tabs` 和下载模板能力。
+- 比特浏览器窗口和调试端口随实例变化，不写死在扩展运行时中。
 
-当前比特浏览器配置：
+## 3. 代码结构
 
-- 配置 ID：`9e6f73cc742b4abc9015f31f8e75fbd7`
-- 配置标题：`7512-Y2-18-工作台`
-- 调试端口：`127.0.0.1:50262`
-- 调试端点来自当前运行实例，重启后会变化，不应硬编码到扩展中。
+```text
+extension-src/
+  manifest.json
+  background.js
+  sidepanel/
+    sidepanel.html
+    sidepanel.css
+    sidepanel.js
+  content/
+    content.js
+  shared/
+    countries.mjs
+    pricing.mjs
+    skc.mjs
+    xlsx-reader.mjs
+  assets/
+    import-template-v2.xlsx
+    skc-template-1000.xlsx
+src/core/
+  countries.mjs
+  pricing.mjs
+  skc.mjs
+src/shared/
+  xlsx-reader.mjs
+```
 
-## 3. 架构
+`tools/build-extension.mjs` 将扩展源和共享模块复制到 `dist/extension`，并检查 manifest 和必需文件。
+
+## 4. 组件架构
 
 ```mermaid
 flowchart TB
-  UI[Side Panel UI] --> BG[Service Worker]
-  UI --> DB[(chrome.storage.local)]
-  BG --> CS[Content Controller]
-  CS --> ADAPTER[Temu DOM Adapter]
-  ADAPTER --> PAGE[Temu SPA]
-  UI --> RULES[Pricing Rules]
-  RULES --> PREVIEW[Review Queue]
-  PREVIEW --> CS
-  CS --> AUDIT[Audit Logger]
-  EXCEL[XLSX Parser] --> UI
-  TEMPLATE[Template Asset] --> UI
+  Excel[Excel 双工作表] --> Parser[xlsx-reader]
+  Parser --> SKC[SKC Validator]
+  Parser --> Country[Country Price Import]
+  SKC --> UI[Side Panel]
+  Country --> UI
+  UI --> Storage[chrome.storage.local]
+  UI --> Rules[Pricing Rules]
+  UI --> Lock[Locked Tab Manager]
+  Lock --> Content[Content Controller]
+  Content --> DOM[Temu DOM]
+  Content --> UI
 ```
 
-### 3.1 Side Panel
+### 4.1 Side Panel
 
 职责：
 
-- 导入模板及校验结果。
-- 编辑国家申报价与还价目标。
-- 使用“选择国家 → 填写申报价”的两步式流程，并提供 59 个站点。
-- 读取双工作表模板并合并国家价格参数。
-- 国家价格不为空时自动启用，包括“启用”列为“否”的美国行；没有价格的国家保持禁用。
-- 保存命名核价方案到 `chrome.storage.local`。
-- 保存最近 30 次任务状态，提交成功的 SKU 使用稳定键去重。
-- 页面失败最多自动重试 3 次；登录失效和结果未知不进入自动重试。
-- 展示页面扫描进度。
-- 展示 SKU 价格对照、筛选和人工取消选择。
-- 最终提交确认和结果导出。
+- 文件导入、SKC 校验和批次展示。
+- 59 个受支持站点的只读导入摘要。
+- RMB/USD 币种切换和汇率输入。
+- Excel 导入参数与任务历史持久化。
+- 标签页锁定和页面诊断。
+- 启动、暂停和重试任务。
+- 展示核价明细与汇总。
 
-状态保存在 `chrome.storage.local`。页面刷新后，页面扫描状态转为 `STALE`，必须重新扫描。
+### 4.2 Background Service Worker
 
-### 3.2 Service Worker
+只负责侧边栏打开行为：
 
-职责：
+- `chrome.sidePanel.setPanelBehavior({openPanelOnActionClick:true})`。
+- 不持有页面句柄，不执行价格规则。
+- MV3 休眠不影响内容脚本中的已启动任务。
 
-- 连接侧边栏、内容脚本和下载流程。
-- 维护单任务运行锁。
-- 监听标签页导航与关闭，终止过期任务。
-- 触发审计日志导出。
-
-Service Worker 不保存页面句柄，不长期持有敏感数据。MV3 空闲休眠后可从存储恢复任务元数据。
-
-### 3.3 Content Controller
+### 4.3 Content Controller
 
 职责：
 
-- 验证当前路由和页面准备状态。
-- 调用元素定位器执行操作。
-- 等待明确的页面状态，不依赖固定延时。
-- 读取并规范化确认弹窗。
-- 提交逐项执行；遇到未知状态立即暂停。
+- 校验目标路由和登录页面。
+- 设置分页和「待卖家确认」。
+- 清理残留抽屉和商品选择。
+- 查询 SKC、读取虚拟表格、补查和合并复核。
+- 全选商品、打开价格抽屉、筛选站点。
+- 读取页面的站点、SKU 和平台价。
+- 根据页面币种执行换算。
+- 填写还价目标、提交和记录结果。
+- 响应页面检查、开始、暂停消息。
 
-### 3.4 Temu DOM Adapter
+### 4.4 Shared Modules
 
-定义稳定的适配接口：
+- `skc.mjs`：SKC 清洗、单货号校验、去重、50 条分批、查询完整性辅助函数。
+- `countries.mjs`：59 个站点、国家行价格和自动启用判断。
+- `pricing.mjs`：金额分、RMB/USD 换算、价格决策、幂等键和提交计划。
+- `xlsx-reader.mjs`：内置 ZIP/XML 解析，不加载外部依赖。
 
-```ts
-interface TemuPriceDeclarationAdapter {
-  detectPage(): Promise<PageState>;
-  setPageSize(50): Promise<void>;
-  setStatus("待卖家确认"): Promise<void>;
-  querySkcs(skcIds: string[]): Promise<QueryResult>;
-  selectAllVisibleProducts(): Promise<number>;
-  openBulkPriceReview(): Promise<void>;
-  scanReviewRows(): Promise<PlatformPriceRow[]>;
-  submitApprovedRows(rows: ApprovedRow[]): Promise<SubmitResult[]>;
-}
-```
+## 5. 标签页锁定
 
-页面操作统一使用 `locator.ts`：
+### 5.1 问题
 
-- 优先：`role`、`label`、可见文本、`name`、稳定的 `data-*` 属性。
-- 次选：语义相邻关系和表格列标题。
-- 最后：最小范围的 CSS 结构选择器。
-- 不使用绝对 XPath、随机 class 或页面上第 N 个 `div`。
-- 允许穿透开放的 Shadow DOM。
-- 每个操作返回命中的元素描述，便于诊断。
+旧实现每次都通过 `chrome.tabs.query({active:true,currentWindow:true})` 选择标签页。用户切换到其他 Temu 页后：
 
-## 4. 关键流程设计
+- 页面检查可能作用于错误页面。
+- 开始核价可能发给错误标签。
+- 暂停请求可能无法到达原内容脚本。
 
-### 4.1 SKC 导入
+### 5.2 当前实现
 
-核心校验顺序：
+- 用户可点击“锁定当前核价标签页”。
+- 页面检查或开始核价时，如未锁定则自动锁定当前目标页。
+- 锁定对象包含 `id`、`windowId`、`url` 和 `title`。
+- 后续检查、开始和暂停使用 `chrome.tabs.get(lockedTab.id)` 和该 ID 的 `sendMessage`。
+- 锁定标签 URL 必须严格匹配 `/newon/product-select`。
+- 标签关闭或导航离开核价路由时清除锁定。
+- 执行期间禁止重新锁定或解除。
 
-1. 解析文件。
-2. 识别表头别名。
-3. 去除空白和 Excel 数字尾随字符。
-4. 过滤未启用且没有价格的国家行。
-5. 校验 SKC 格式。
-6. 去重。
-7. 校验单一货号。
-8. 校验最多 1000 条，并按每批 50 条生成批次。
+锁定状态仅在当前侧边栏生命周期中存在，不持久化到跨浏览器重启状态。
 
-任何会导致目标集合不明确的问题都必须阻断流程。
+## 6. Excel 与数据模型
 
-### 4.2 页面准备
+### 6.1 输入工作表
 
-每步使用状态确认，而不是固定等待：
+`SKC导入`：
 
-- 分页控件存在且值变为 50。
-- 行数不超过 50。
-- 状态筛选文本为「待卖家确认」。
-- 查询结果至少存在一个商品或明确显示空状态。
-- 全选后选中计数与当前可见行数一致。
+- 货号
+- SKC ID
+- 启用
+- 备注
 
-### 4.2.1 SKC 查询完整性
+`国家价格`：
 
-每批开始前必须关闭残留价格抽屉并清除上次商品选择。批量查询不能以“任意一个 SKC 已出现”作为完成条件，而要执行以下门槛：
+- 国家代码
+- 国家名称
+- 分组
+- 启用
+- 最低接受价(RMB)
+- 提交价格(RMB)
+- 提交方式
+- 备注
 
-1. 等待页面结果总数连续稳定。
-2. 滚动虚拟商品表格，收集本批请求范围内的全部 SKC。
-3. 计算未返回 SKC，按每 10 个一组补查。
-4. 对所有出现过结果的 SKC 做一次合并复核查询。
-5. 打开价格抽屉后核对站点组总数，并拒绝本批范围之外的 SKC。
-6. 将请求数、返回数、无待确认数、抽屉组数和提交数写入任务历史。
+兼容旧模板的列名含义：
 
-任何补查后仍无法合并返回的 SKC 均阻断任务，不能把部分处理记录为成功完成。
+- `最低接受价(RMB)`：申报价。
+- `提交价格(RMB)`：可选还价目标，空值时使用申报价。
 
-### 4.3 金额规范化
+### 6.2 自动启用
 
-金额统一使用「分」的整数计算，避免 JavaScript 浮点误差：
+国家行满足以下任一条件时导入：
+
+- 启用列不是明确的否。
+- 任一人民币价格字段非空。
+
+因此美国行即使启用写为“否”，只要填写价格仍会自动启用。无价格且明确禁用的行忽略。
+
+### 6.3 存储状态
+
+`chrome.storage.local`：
+
+- `temuPricingAssistantStateV1`：最近一次 SKC、国家、价格、币种、汇率和当前批次。
+- `temuPricingProfilesV1`：旧版本兼容键，当前正常流程不提供命名方案编辑。
+- `temuPricingJobHistoryV1`：最近 30 次任务。
+- `temuPricingLastAudit`：最近任务明细。
+- `temuPricingLastError`：最近一次内部失败诊断。
+
+## 7. 币种换算
+
+### 7.1 用户币种
+
+Excel 始终是 RMB 来源数据。
+
+RMB 模式：
 
 ```text
-platformRmbCents = round(platformOriginalPrice * fxRateToRmb * 100)
-floorCents = round(floorRmb * 100)
+displayCents = rmbCents
 ```
 
-当平台直接提供 RMB 时，RMB 字段是首选，不进行二次换算。汇率必须包含：
+USD 模式，汇率定义为 `1 USD = fxRate RMB`：
 
-- 来源
-- 币种对
-- 汇率
-- 获取时间
-- 是否手工录入
+```text
+displayUsdCents = round(rmbCents / fxRate)
+rmbCents = round(displayUsdCents * fxRate)
+```
 
-缺少任一项时结果为 `BLOCKED_FX`。
+内部使用整数分，避免浮点累计误差。若 USD 显示值未被用户修改，使用输入框保存的原始 `rmbCents`，避免仅切换币种造成一分钱漂移。
 
-### 4.4 决策状态机
+### 7.2 Temu 页面币种
+
+抽屉表头优先识别：
+
+- `原申报价格(USD)`、`新申报价格(USD)`、`US Dollar` → USD。
+- `原申报价格(CNY)`、`原申报价格(RMB)` → CNY/RMB。
+- 无明确表头时回退到用户显示币种。
+
+页面价格统一转换到 RMB 基准：
+
+```text
+page CNY → platformRmbCents = pageCents
+page USD → platformRmbCents = round(pageCents * fxRate)
+```
+
+还价时，目标价转换为页面输入币种：
+
+```text
+pageUnitCents = round(targetRmbCents / fxRate)  // USD 页面
+pageUnitCents = targetRmbCents                 // CNY 页面
+```
+
+### 7.3 汇率校验
+
+USD 模式必须满足：
+
+```text
+fxRate > 0
+```
+
+汇率无效时开始按钮禁用。批次运行时再次校验，不能仅依赖 UI。
+
+## 8. SKC 分批与完整性
+
+### 8.1 两层批次
+
+- 外层批次：最多 50 个 SKC，最多 20 批。
+- 内层查询组：最多 10 个 SKC，每批最多 5 组。
+
+### 8.2 单组流程
+
+1. 清除当前商品选择。
+2. 查询组内 SKC。
+3. 等待「共有 N 条」结果数量稳定。
+4. 滚动虚拟商品表并收集请求范围内的 SKC。
+5. 对未返回 SKC 进行补查。
+6. 若存在返回项且曾补查，执行最终合并复核。
+7. 返回 `returnedSkcIds`、`noPendingSkcIds` 和查询日志。
+
+### 8.3 完成门槛
+
+- 合并查询缺少已发现 SKC时抛错。
+- 页面价格抽屉显示组数与读取组数不一致时抛错。
+- 抽屉出现本组之外的 SKC 时抛错。
+- 任一 SKC 必须归类为返回或无待确认。
+- 不允许只处理部分 SKC 后标记完成。
+
+## 9. 页面流程
+
+### 9.1 分页与筛选
+
+- 分页输入框只读值必须为 50。
+- 点击「价格申报中」标签。
+- 仅启用「待卖家确认」状态。
+- 页面检查使用输入框 value 判断分页，不依赖页面文本中出现“每页 50”。
+
+### 9.2 全选与抽屉
+
+- 全选商品信息主表的表头复选框。
+- 打开「批量管理申报价 → 查看并确认申报价格」。
+- 按 Excel 中有价格并自动启用的站点过滤抽屉。
+
+### 9.3 站点和 SKU 读取
+
+- 支持虚拟滚动。
+- 识别 SKC、SKU 标签、站点、原价和调整后价格。
+- 以 `SKC + 站点 + SKU` 去重。
+- 支持页面 CNY 或 USD 表头。
+- 平台价记录同时保留页面分值和 RMB 基准分值。
+
+## 10. 决策和提交
+
+### 10.1 单行决策
 
 ```mermaid
 stateDiagram-v2
   [*] --> Scanned
-  Scanned --> AcceptPlatform: platformRmb >= targetRmb
-  Scanned --> Reprice: platformRmb < targetRmb
-  Scanned --> Blocked: invalidPriceOrFx
-  Scanned --> ManualReview: mixedPricesAcrossTarget
-  AcceptPlatform --> UserConfirmed
-  Reprice --> UserConfirmed
-  ManualReview --> Excluded
-  UserConfirmed --> Submitting
-  Submitting --> Success
-  Submitting --> AlreadySubmitted
-  Submitting --> FailedKnown
-  Submitting --> Unknown
+  Scanned --> Blocked: 价格或汇率无效
+  Scanned --> AlreadySubmitted: 成功键命中
+  Scanned --> AcceptPlatform: 平台价 >= 申报价
+  Scanned --> Reprice: 平台价 < 申报价
+  AcceptPlatform --> Eligible
+  Reprice --> Eligible
+  Blocked --> Excluded
+  AlreadySubmitted --> Excluded
 ```
 
-默认规则在平台价低于申报价时：
+### 10.2 站点组决策
 
-1. 把操作选择为「重新调整报价」。
-2. 打开「补充商家调价原因」，选择「其他」并填写“按商家申报价还价”。
-3. 在新申报价格中输入用户申报价；如单独设置了还价目标，则使用还价目标。
-4. 提交该组价格。
+- 组内包含阻断或已提交行：排除整个站点组。
+- 组内全部需要还价：整组执行还价。
+- 组内全部可直接接受：不修改价格。
+- 组内同时存在直接接受和还价：阻断该组，避免组级控件误改高价 SKU。
 
-平台价大于或等于申报价时，不打开调价操作，直接保留平台价并提交。同一站点/SKC 的 SKU 价格同时跨越申报价两侧时，组级调价控件无法保证逐个 SKU 保留高价，系统排除该组并要求人工处理。
+### 10.3 提交
 
-用户可在任务执行期间请求暂停。暂停只在尚未开始提交时生效；一旦点击「全部提交」，中断会形成未知提交状态，系统会等待结果而不做自动重试。
+- 点击「全部提交(N项)」。
+- 等待「确认提交」，点击确认。
+- 等待抽屉关闭或出现「已提交」。
+- 点击提交按钮后，不再允许暂停请求安全中断。
+- 点击后异常标记 `UNKNOWN_SUBMIT_STATE`，禁止自动重试。
 
-### 4.5 幂等键
+### 10.4 已提交跳过
 
-```text
-SHA-256(accountFingerprint + productCode + skcId + site + skuId + platformRmbCents + floorRmbCents)
-```
+- 成功明细使用 `skcId|siteName|skuLabel` 稳定键。
+- 后续任务默认跳过历史成功键。
+- 用户可勾选“强制重新处理已成功项”。
 
-`accountFingerprint` 由店铺可见 ID 的哈希生成，不保存会话令牌。提交前检查本地成功记录；如果平台显示已确认，则标记 `ALREADY_SUBMITTED`。
+## 11. 重试
 
-## 5. 数据模型
+- 批次在未开始提交前失败，最多自动重试 3 次。
+- 重试间隔约 3 秒和 8 秒。
+- 登录失效不重试。
+- 已开始提交后失败不重试。
+- 结果未知任务禁止“重试上次任务”，先人工核对平台。
+
+## 12. 暂停
+
+- 内容脚本维护当前任务状态。
+- `STOP_AUTOMATION` 只发送到锁定标签。
+- 查询、扫描、补查和还价阶段检查取消标志。
+- 进入提交阶段后设置 `cancelAllowed=false`。
+- 暂停任务记录为 `cancelled`。
+
+## 13. 权限
+
+manifest 使用：
 
 ```json
 {
-  "jobId": "local-uuid",
-  "productCode": "Y2-18",
-  "skcIds": ["741234567890"],
-  "batchSize": 50,
-  "batchCount": 20,
-  "countries": [
-    {
-      "siteCode": "US",
-      "siteName": "美国",
-      "floorRmbCents": 5500
-    }
-  ],
-  "comparisonPolicy": "STRICT_GREATER",
-  "rows": [
-    {
-      "skcId": "741234567890",
-      "skuId": "SKU-001",
-      "siteCode": "US",
-      "siteName": "美国",
-      "currency": "USD",
-      "platformPrice": 8.5,
-      "platformRmbCents": 6120,
-      "floorRmbCents": 5500,
-      "decision": "APPROVED",
-      "submittedPriceRmbCents": 5500
-    }
-  ],
-  "status": "REVIEW_READY"
+  "permissions": ["storage", "sidePanel", "downloads", "tabs"],
+  "host_permissions": ["https://agentseller.temu.com/*"]
 }
 ```
 
-主要任务状态：
+不申请：
 
-```text
-DRAFT
-IMPORT_VALIDATED
-PARAMETERS_READY
-PAGE_PREPARING
-QUERY_READY
-REVIEW_OPEN
-SCANNING
-REVIEW_READY
-SUBMITTING
-COMPLETED
-PAUSED_FOR_USER
-FAILED
+- `<all_urls>`
+- cookies
+- webRequest
+- debugger
+- 远程主机权限
+
+## 14. 安全与隐私
+
+- 不读取或上传 Cookie、Authorization、密码和完整页面 HTML。
+- SKC、国家价格、汇率和任务记录只存储在浏览器本地。
+- 不加载远程脚本或 CDN。
+- 页面结构不明、金额不明、币种不明或完整性失败时停止。
+- 页面二次确认、风控提示或验证码出现时停止自动操作。
+- 用户必须在已授权账号和平台条款范围内使用。
+
+## 15. 测试策略
+
+### 15.1 自动化
+
+```powershell
+node --test tests/*.test.mjs
+node tools/simulate.mjs
+node tools/build-extension.mjs
 ```
 
-## 6. 权限设计
+覆盖：
 
-建议 `manifest.json`：
+- SKC 过滤、去重、单货号和分批。
+- 价格分、RMB/USD 往返换算。
+- 汇率缺失和非法值。
+- 直接接受、相等和还价边界。
+- 国家价格自动启用。
+- 已提交和阻断项隔离。
+- 双工作表解析。
 
-```json
-{
-  "manifest_version": 3,
-  "permissions": ["storage", "sidePanel", "downloads"],
-  "host_permissions": ["https://agentseller.temu.com/*"],
-  "content_scripts": [
-    {
-      "matches": ["https://agentseller.temu.com/newon/product-select*"],
-      "js": ["content-controller.js"],
-      "run_at": "document_idle"
-    }
-  ]
-}
-```
+### 15.2 浏览器验证
 
-不申请 `<all_urls>`、`cookies`、`webRequest` 或 `debugger`。如需导出文件，使用 `downloads`；若通过 Blob 链接即可下载，则移除 `downloads`。
+- 侧边栏运行时异常和横向溢出。
+- 页面分页、筛选、查询和虚拟滚动。
+- 残留抽屉清理。
+- 查询组补查和合并复核。
+- 标签锁定后切换其他 Temu 标签。
+- USD 和 CNY 页面价格识别。
+- 仅预览模式不提交。
 
-Excel 解析库必须打包在扩展内部，不能从 CDN 动态加载，以符合 MV3 CSP 并避免供应链变化。
+### 15.3 真实页面分级
 
-## 7. 安全与合规
+1. 只读页面检查。
+2. 单 SKC、单站点预览。
+3. 单 SKC、多站点预览。
+4. 小批量实际提交。
+5. 50 SKC 单批。
+6. 1000 SKC / 20 批完整回归。
 
-- 不读取或导出 Cookie、Authorization Header、密码和完整页面源码。
-- 不在远程服务器保存 SKC、价格或账号信息。
-- 不在页面结构不确定时自动提交。
-- 汇率缺失、站点缺失、行数不一致均 fail closed。
-- 所有点击必须带明确前置状态断言。
-- 提交采用单线程顺序执行，禁止并发。
-- 用户可随时暂停任务。
-- 取得平台授权并遵守卖家后台条款；发布前确认自动化操作范围。
+## 16. 当前已知限制
 
-## 8. 测试策略
+- 真实 1000 SKC 全量回归尚未完成。
+- Temu DOM 或列顺序变化可能导致定位失败。
+- 混合高低价 SKU 组仅能人工处理。
+- 汇率是手工值，不自动更新。
+- 当前不是常驻监控任务。
+- 没有审计或结果 Excel 导出。
+- 侧边栏只在任务执行期间保存标签锁定；浏览器重启后需重新锁定。
 
-### 单元测试
+## 17. 文档与发布同步
 
-- 模板解析和别名识别。
-- SKC 清洗、去重、数量和单货号校验。
-- 金额转分、汇率换算和边界比较。
-- 决策状态与提交队列。
-- 幂等键稳定性。
+每次更新必须：
 
-### 浏览器组件测试
+1. 更新 PRD 中的需求或验收变化。
+2. 更新本技术文档中的架构、算法、选择器、数据模型或限制变化。
+3. 更新 `docs/DEVELOPMENT_STATUS.md` 的版本、日期、测试与真实页面结论。
+4. 同步 manifest、侧边栏版本、README、扩展 README 和安装包文件名。
+5. 运行自动测试和构建。
 
-- 模拟 Temu 页面使用自定义节点和开放 Shadow DOM。
-- 验证分页、状态筛选、全选、批量菜单和确认弹窗定位。
-- 模拟 SPA 重渲染，确认定位器会重新查找而不是使用失效节点。
-
-### 端到端测试
-
-- 使用 Playwright 对本地模拟页执行 50 SKC 单批流程，并验证 1000 SKC 拆成 20 批。
-- 使用 `chromium.connectOverCDP()` 连接比特浏览器调试端口做受控烟测。
-- 实际账号只读阶段、1 行提交阶段、小批量阶段和 1000 条/20 批阶段分开验收。
-
-### 模拟与真实差异
-
-模拟页面用于验证规则和交互顺序，不能证明 Temu 选择器可用。真实页面验收必须先完成只读 DOM 采集。页面发生结构变化时，模拟测试通过不代表线上可用。
-
-## 9. 分阶段发布
-
-### M0：当前预研
-
-- PRD、技术文档、核心规则和虚拟测试。
-- 确认需求歧义和账号状态。
-
-### M1：只读扩展
-
-- 侧边栏、模板导入、国家参数、页面准备、弹窗扫描和价差预览。
-- 提交按钮禁用或 Dry-run。
-
-### M2：受控提交
-
-- 单账号、单批次、逐行提交、幂等和审计。
-- 先 1 行、后 5 行，再验证 50 行。
-
-### M3：稳定性增强
-
-- 多页面版本适配。
-- 审计导出、选择器健康检查和失败恢复。
-- 只有在真实数据验证后才评估接口增强。
-
-## 10. 开发期连接方式
-
-当前设备可读取页面调试端点，但端口随浏览器重启变化。开发工具应动态发现：
-
-1. 读取比特浏览器本地 API 获取已打开配置的调试信息。
-2. 或从当前浏览器进程参数中发现调试端口。
-3. 再通过 CDP 连接目标标签页。
-
-生产扩展不依赖此端口。调试脚本只用于只读检查和 E2E 测试。
+不得把未实现能力描述为已完成。

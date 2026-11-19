@@ -20,10 +20,14 @@
   // ============================================================ 常量
   const LIST_URL = 'https://agentseller.temu.com/goods/list';
   const EDIT_URL = (spu) => `https://agentseller.temu.com/goods/edit?from=productList&productId=${spu}`;
+  const IMAGE_TASK_URL = 'https://agentseller.temu.com/material/image-task';
+  const IMAGES_EDIT_URL = (id) => `https://agentseller.temu.com/goods/images-edit?productId=${encodeURIComponent(id)}&from=selfTask`;
   const BOT_HASH = 'temu-image-bot';
   const DB_NAME = 'temu-image-bot';
   const DB_STORE = 'kv';
-  const VERSION = '0.10.14';
+  const VERSION = '0.10.15';
+  const IMAGE_TASK_JOB_KEY = 'imageTaskJob';
+  const IMAGE_TASK_FILES_KEY = 'imageTaskFiles';
   const LEASE_KEY = 'temu-image-bot-task-lease-v2';
   const LEASE_MS = 25000;
   const LEGACY_TASK_ID = 'legacy';
@@ -31,6 +35,9 @@
   let taskLibrary = [];
   let activeImageTarget = '';
   let activeMaterialDialog = null;
+  let carouselJob = null;
+  let carouselAddFiles = [];
+  let carouselResumeStarted = false;
   const TAB_INFO = { tabId: null, windowId: null };
   const TAB_ID = (() => {
     let id = sessionStorage.getItem('temu-image-bot-tab-id');
@@ -1172,7 +1179,7 @@
           </span>
           <span class="hdActions">
             <button class="gear" id="gear" title="设置">⚙</button>
-            <button id="min" title="折叠">—</button>
+            <button id="min" title="缩小到悬浮按钮">—</button>
             <button id="closePanel" title="关闭到悬浮按钮">×</button>
           </span>
         </div>
@@ -1226,6 +1233,36 @@
             <button class="btn" id="newTask">＋ 新建货号任务</button>
             <button class="btn danger" id="deleteTask">删除任务</button>
             <button class="btn" id="openLog">记录</button>
+          </div>
+          <div class="group homeOnly" id="carouselTool">
+            <div class="groupTitle">轮播图维护 <small>定向删除 / 新增</small></div>
+            <div class="row" style="align-items:flex-end">
+              <div class="field" style="flex:1">
+                <span>商品 ID（SPU / SKC / SKC 货号，可多行/逗号分隔）</span>
+                <textarea id="carouselProductIds" rows="3" placeholder="每行一个 ID，例如：&#10;45687392555&#10;9542570366" style="width:100%;resize:vertical"></textarea>
+              </div>
+              <div class="field">
+                <span>删除第几张</span>
+                <input type="number" id="carouselDeleteIndex" min="1" max="10" value="1" style="width:64px">
+              </div>
+            </div>
+            <div class="row">
+              <button class="btn" id="carouselImportIds">导入 ID 文件</button>
+              <span class="hint" id="carouselIdInfo">支持 xlsx / csv / txt</span>
+              <input type="file" id="carouselIdFile" accept=".xlsx,.csv,.txt" style="display:none">
+            </div>
+            <div class="row">
+              <label><input type="checkbox" id="carouselAddImage"> 同时新增图片</label>
+              <button class="btn" id="carouselPickImage">选择新增图片</button>
+              <span class="hint" id="carouselImageInfo">未选择</span>
+              <input type="file" id="carouselImageFile" accept="image/*" multiple style="display:none">
+            </div>
+            <div class="row">
+              <label><input type="checkbox" id="carouselDryRun" checked> 安全演练（不提交）</label>
+              <button class="btn pri" id="carouselStart">开始轮播图维护</button>
+              <button class="btn danger" id="carouselStop" disabled>停止</button>
+            </div>
+            <div class="hint" id="carouselStatus">等待开始</div>
           </div>
           <div class="wizard setupOnly" id="wizard">
             <b>第一次使用？三步就能跑起来：</b><br>
@@ -1514,6 +1551,19 @@
       remarkInput: shadow.getElementById('remarkInput'),
       cfgFile: shadow.getElementById('cfgFile'),
       verLine: shadow.getElementById('verLine'),
+      carouselProductIds: shadow.getElementById('carouselProductIds'),
+      carouselDeleteIndex: shadow.getElementById('carouselDeleteIndex'),
+      carouselImportIds: shadow.getElementById('carouselImportIds'),
+      carouselIdFile: shadow.getElementById('carouselIdFile'),
+      carouselIdInfo: shadow.getElementById('carouselIdInfo'),
+      carouselAddImage: shadow.getElementById('carouselAddImage'),
+      carouselPickImage: shadow.getElementById('carouselPickImage'),
+      carouselImageFile: shadow.getElementById('carouselImageFile'),
+      carouselImageInfo: shadow.getElementById('carouselImageInfo'),
+      carouselDryRun: shadow.getElementById('carouselDryRun'),
+      carouselStart: shadow.getElementById('carouselStart'),
+      carouselStop: shadow.getElementById('carouselStop'),
+      carouselStatus: shadow.getElementById('carouselStatus'),
     };
 
     // 参数区合并到任务设置页，主列表页不再显示参数
@@ -1558,9 +1608,10 @@
     });
 
     shadow.getElementById('min').onclick = () => {
-      const bd = shadow.querySelector('.bd');
-      bd.classList.toggle('open');
-      uiState.collapsed = !bd.classList.contains('open');
+      uiState.closed = true;
+      uiState.collapsed = false;
+      applyPos();
+      log('面板已缩小到右下角悬浮按钮');
       saveUI();
     };
     shadow.getElementById('closePanel').onclick = () => {
@@ -1601,6 +1652,22 @@
     shadow.getElementById('impBack').onclick = () => pickFolder('back');
     shadow.getElementById('expStatus').onclick = downloadStatusWorkbook;
     shadow.getElementById('dlMulticolorTemplate').onclick = downloadMulticolorTemplate;
+    ui.carouselPickImage.onclick = () => ui.carouselImageFile.click();
+    ui.carouselImageFile.onchange = (event) => {
+      carouselAddFiles = [...(event.target.files || [])];
+      ui.carouselImageInfo.textContent = carouselAddFiles.length
+        ? `${carouselAddFiles.length} 张：${carouselAddFiles.map((file) => file.name).join('、')}`
+        : '未选择';
+      event.target.value = '';
+    };
+    ui.carouselImportIds.onclick = () => ui.carouselIdFile.click();
+    ui.carouselIdFile.onchange = async (event) => {
+      const file = event.target.files && event.target.files[0];
+      if (file) await importCarouselIdFile(file);
+      event.target.value = '';
+    };
+    ui.carouselStart.onclick = onStartCarouselTool;
+    ui.carouselStop.onclick = onStopCarouselTool;
     shadow.getElementById('newTask').onclick = onCreateTask;
     shadow.getElementById('prepareTask').onclick = onPrepareTask;
     shadow.getElementById('deleteTask').onclick = onDeleteTask;
@@ -2288,6 +2355,13 @@
         resolve(d);
       }
     }
+    if (d.type === 'FIND_TAB_RESULT') {
+      const resolve = pendingType.get(d.reqId);
+      if (resolve) {
+        pendingType.delete(d.reqId);
+        resolve(d);
+      }
+    }
     if (d.type === 'GET_TAB_INFO_RESULT' || d.type === 'CLOSE_TAB_RESULT') {
       const resolve = pendingType.get(d.reqId);
       if (resolve) {
@@ -2315,6 +2389,7 @@
       clear: !!opts.clear,
       clickX: opts.clickX,
       clickY: opts.clickY,
+      tabId: TAB_INFO.tabId,
     }, '*');
     return new Promise((resolve) => {
       pendingType.set(reqId, resolve);
@@ -2353,7 +2428,14 @@
     const x = r.left + r.width / 2;
     const y = r.top + r.height / 2 + offsetY;
     const reqId = ++typeSeq;
-    window.postMessage({ __temuImageBot: true, type: 'REAL_CLICK', reqId, x, y }, '*');
+    window.postMessage({
+      __temuImageBot: true,
+      type: 'REAL_CLICK',
+      reqId,
+      x,
+      y,
+      tabId: TAB_INFO.tabId,
+    }, '*');
     const res = await new Promise((resolve) => {
       pendingType.set(reqId, resolve);
       setTimeout(() => {
@@ -2370,7 +2452,13 @@
   /** 插件内部导航统一走调试协议：若出现“离开此网站”确认，自动按插件既定流程继续。 */
   async function safeNavigate(url) {
     const reqId = ++typeSeq + 200000;
-    window.postMessage({ __temuImageBot: true, type: 'NAVIGATE_URL', reqId, url }, '*');
+    window.postMessage({
+      __temuImageBot: true,
+      type: 'NAVIGATE_URL',
+      reqId,
+      url,
+      tabId: TAB_INFO.tabId,
+    }, '*');
     const res = await new Promise((resolve) => {
       pendingType.set(reqId, resolve);
       setTimeout(() => {
@@ -2395,6 +2483,20 @@
         if (pendingType.has(reqId)) {
           pendingType.delete(reqId);
           resolve({ ok: false, error: '查找确认页超时' });
+        }
+      }, 8000);
+    });
+  }
+
+  async function findTabByUrl(urlKeyword) {
+    const reqId = ++typeSeq + 600000;
+    window.postMessage({ __temuImageBot: true, type: 'FIND_TAB', reqId, urlKeyword }, '*');
+    return new Promise((resolve) => {
+      pendingType.set(reqId, resolve);
+      setTimeout(() => {
+        if (pendingType.has(reqId)) {
+          pendingType.delete(reqId);
+          resolve({ ok: false, error: '查找标签页超时' });
         }
       }, 8000);
     });
@@ -3964,7 +4066,11 @@
   }
 
   /** 选中素材库里的目标图片（返回实际素材名） */
-  async function pickMaterial(dlg, fileOrName, { uploadIfMissing = true } = {}) {
+  async function pickMaterial(dlg, fileOrName, {
+    uploadIfMissing = true,
+    cropW = state.config.cropW,
+    cropH = state.config.cropH,
+  } = {}) {
     const base = typeof fileOrName === 'string' ? fileOrName : baseName(fileOrName.name);
     activeImageTarget = base;
     const regex = nameRegexFor(base);
@@ -3981,7 +4087,7 @@
       const uploadFile = await ensureUploadableImage(fileOrName);
       await uploadFilesToDialog(dlg, [uploadFile]);
       await dismissDedupeIfAny();
-      await handleCropDialog(state.config.cropW, state.config.cropH);
+      await handleCropDialog(cropW, cropH);
       await dismissDedupeIfAny();
       // 上传后的素材需要一点时间入库，而且列表不会自动刷新 —— 隔几秒重搜一次
       await sleep(6000);
@@ -4401,6 +4507,423 @@
       log(`背面图素材登记：${names.join('、')}（后续色值直接复用）`);
     }
     log(`背面图已写入第 ${rowIdx + 1} 行`);
+  }
+
+  // ============================================================ 轮播图维护（图片更新任务）
+  function isImageTaskPage() {
+    return location.pathname.includes('/material/image-task');
+  }
+
+  function isImagesEditPage() {
+    return location.pathname.includes('/goods/images-edit');
+  }
+
+  function setCarouselStatus(text, kind = '') {
+    if (ui.carouselStatus) {
+      ui.carouselStatus.textContent = text;
+      ui.carouselStatus.className = kind === 'error' ? 'hint warn' : (kind === 'ok' ? 'hint ok' : 'hint');
+    }
+    if (carouselJob) {
+      carouselJob.progress = text;
+      carouselJob.updatedAt = Date.now();
+    }
+  }
+
+  function assertCarouselRunning() {
+    if (!carouselJob || carouselJob.cancelled || carouselJob.status !== 'running') {
+      const err = new Error('轮播图维护已停止');
+      err.code = 'CAROUSEL_STOPPED';
+      throw err;
+    }
+  }
+
+  function visibleCarouselButton(text) {
+    return [...document.querySelectorAll('button')]
+      .filter(visible)
+      .find((button) => (button.innerText || '').trim() === text) || null;
+  }
+
+  function idInputScope(input) {
+    const dialog = input.closest('[class*="MDL_innerWrapper"]') || input.closest('[class*="MDL_inner"]');
+    if (dialog) return dialog;
+    let el = input;
+    for (let i = 0; i < 16 && el; i += 1) {
+      if ([...el.querySelectorAll('button')]
+        .some((button) => (button.innerText || '').trim() === '确认')) {
+        return el;
+      }
+      el = el.parentElement;
+    }
+    return input.parentElement;
+  }
+
+  async function platformClick(el, settle = 500) {
+    if (!el) throw new Error('点击目标为空');
+    await deepScrollIntoView(el, 0.6).catch(() => {});
+    el.click();
+    await sleep(settle);
+  }
+
+  async function saveCarouselJob(job = carouselJob) {
+    if (!job) return;
+    job.updatedAt = Date.now();
+    await dbSet(IMAGE_TASK_JOB_KEY, job);
+  }
+
+  function parseCarouselIds(text) {
+    return [...new Set(String(text || '')
+      .split(/[\s,，;；]+/)
+      .map((value) => value.trim())
+      .filter(Boolean))]
+      .filter((value) => /^[A-Za-z0-9_-]{4,40}$/.test(value));
+  }
+
+  async function importCarouselIdFile(file) {
+    if (!file) return;
+    try {
+      let ids = [];
+      if (/\.xlsx$/i.test(file.name)) {
+        const rows = await parseXlsx(file);
+        let headerIndex = -1;
+        let idCol = -1;
+        for (let i = 0; i < rows.length; i += 1) {
+          const cells = rows[i] || [];
+          const col = cells.findIndex((cell) =>
+            /(?:SKC|SPU)?\s*ID|商品\s*ID|货号/i.test(String(cell || '')));
+          if (col >= 0) {
+            headerIndex = i;
+            idCol = col;
+            break;
+          }
+        }
+        if (headerIndex >= 0 && idCol >= 0) {
+          for (let i = headerIndex + 1; i < rows.length; i += 1) {
+            const value = String((rows[i] || [])[idCol] || '').trim();
+            if (/^[A-Za-z0-9_-]{4,40}$/.test(value)) ids.push(value);
+          }
+        } else {
+          ids = extractSkcs(rows);
+        }
+      } else {
+        const text = await file.text();
+        ids = (text.match(/[A-Za-z0-9_-]{4,40}/g) || [])
+          .filter((value) => /\d/.test(value));
+      }
+      ids = [...new Set(ids)];
+      if (!ids.length) throw new Error('文件里没有识别到商品 ID');
+      ui.carouselProductIds.value = ids.join('\n');
+      ui.carouselIdInfo.textContent = `${file.name}：${ids.length} 个 ID`;
+      log(`轮播图维护：已导入 ${ids.length} 个商品 ID（${ids.join('、')}）`);
+    } catch (err) {
+      log('导入 ID 文件失败：' + err.message, 'error');
+    }
+  }
+
+  async function onStartCarouselTool() {
+    if (!ui.carouselProductIds) return;
+    const ids = parseCarouselIds(ui.carouselProductIds.value);
+    const deleteIndex = Number(ui.carouselDeleteIndex.value || 1);
+    const addImages = !!ui.carouselAddImage.checked;
+    const dryRun = !!ui.carouselDryRun.checked;
+    if (!ids.length) {
+      log('轮播图维护：请输入至少一个商品 ID（SPU/SKC/SKC货号）', 'error');
+      return;
+    }
+    if (!Number.isInteger(deleteIndex) || deleteIndex < 1 || deleteIndex > 10) {
+      log('轮播图维护：删除第几张必须是 1–10 的整数', 'error');
+      return;
+    }
+    if (addImages && !carouselAddFiles.length) {
+      log('轮播图维护：已勾选新增图片，但还没有选择图片', 'error');
+      return;
+    }
+    const existing = await dbGet(IMAGE_TASK_JOB_KEY);
+    if (existing && existing.status === 'running' && !existing.cancelled) {
+      log('轮播图维护：已有一个任务在运行，请先停止或等待完成', 'error');
+      return;
+    }
+    const job = {
+      id: `carousel-${Date.now()}`,
+      stage: 'start',
+      status: 'running',
+      cancelled: false,
+      ids,
+      index: 0,
+      results: [],
+      deleteIndex,
+      addImages,
+      dryRun,
+      cropW: 1350,
+      cropH: 1800,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      progress: '开始',
+    };
+    carouselJob = job;
+    await dbSet(IMAGE_TASK_JOB_KEY, job);
+    await dbSet(IMAGE_TASK_FILES_KEY, addImages ? carouselAddFiles : []);
+    ui.carouselStart.disabled = true;
+    ui.carouselStop.disabled = false;
+    setCarouselStatus('正在前往图片更新任务页…');
+    log(`轮播图维护开始：共 ${ids.length} 个 ID（${ids.join('、')}）；删除第 ${deleteIndex} 张；`
+      + `${addImages ? `新增 ${carouselAddFiles.length} 张图片` : '不新增图片'}；`
+      + `${dryRun ? '安全演练（不提交）' : '完成后自动提交'}`);
+    if (!isImageTaskPage()) {
+      await safeNavigate(IMAGE_TASK_URL);
+      return;
+    }
+    runImageTaskStartStage().catch(handleCarouselError);
+  }
+
+  async function onStopCarouselTool() {
+    const job = carouselJob || await dbGet(IMAGE_TASK_JOB_KEY);
+    if (!job || job.status !== 'running') return;
+    job.cancelled = true;
+    job.status = 'stopped';
+    job.progress = '已停止';
+    job.updatedAt = Date.now();
+    carouselJob = job;
+    await dbSet(IMAGE_TASK_JOB_KEY, job);
+    if (ui.carouselStart) ui.carouselStart.disabled = false;
+    if (ui.carouselStop) ui.carouselStop.disabled = true;
+    setCarouselStatus('已停止', 'error');
+    log('轮播图维护已停止', 'error');
+  }
+
+  async function handleCarouselError(err) {
+    if (!carouselJob) return;
+    if (err && err.code === 'CAROUSEL_STOPPED') {
+      setCarouselStatus('已停止', 'error');
+      return;
+    }
+    const message = (err && err.message) || String(err);
+    carouselJob.status = 'failed';
+    carouselJob.error = message;
+    carouselJob.progress = `失败：${message}`;
+    carouselJob.updatedAt = Date.now();
+    await dbSet(IMAGE_TASK_JOB_KEY, carouselJob);
+    if (ui.carouselStart) ui.carouselStart.disabled = false;
+    if (ui.carouselStop) ui.carouselStop.disabled = true;
+    setCarouselStatus(`失败：${message}`, 'error');
+    log(`轮播图维护失败：${message}`, 'error');
+    try {
+      if (materialDialog()) await closeMaterialDialog();
+    } catch (closeErr) {
+      /* ignore */
+    }
+  }
+
+  async function runImageTaskStartStage() {
+    const job = carouselJob;
+    const productId = job.ids[job.index];
+    assertCarouselRunning();
+    setCarouselStatus(`第 ${job.index + 1}/${job.ids.length} 个：${productId}，打开「发起图片/视频更新」…`);
+    const startButton = await waitFor(() => visibleCarouselButton('发起图片/视频更新'),
+      { timeout: 60000, desc: '发起图片/视频更新按钮' });
+    await platformClick(startButton);
+    const input = await waitFor(() => [...document.querySelectorAll('input')]
+      .find((el) => visible(el) && el.placeholder === '可输入SPU、SKC或SKC货号'),
+      { timeout: 30000, desc: '商品 ID 输入框' });
+    await setInput(input, productId);
+    const scope = idInputScope(input);
+    const confirm = await waitFor(() => [...scope.querySelectorAll('button')]
+      .filter(visible)
+      .find((button) => (button.innerText || '').trim() === '确认'),
+      { timeout: 15000, desc: '商品 ID 确认按钮' });
+    setCarouselStatus('提交商品 ID…');
+    await platformClick(confirm);
+    log(`轮播图维护：已提交商品 ID ${productId}，等待图片更新任务详情页`);
+    job.stage = 'edit';
+    job.progress = '等待图片更新任务详情页';
+    await saveCarouselJob(job);
+    await sleep(3500);
+    const extra = await findTabByUrl(`goods/images-edit?productId=${encodeURIComponent(productId)}`);
+    if (extra && extra.ok && extra.tabId && extra.tabId !== TAB_INFO.tabId) {
+      await closeExtraTab(extra.tabId);
+      log('已关闭确认时自动打开的重复图片更新标签页');
+    }
+    await safeNavigate(IMAGES_EDIT_URL(productId));
+  }
+
+  function carouselWraps() {
+    return [...document.querySelectorAll('[class*="preview-image_wrap"]')].filter(visible);
+  }
+
+  function carouselItems(wrap) {
+    return wrap ? [...wrap.querySelectorAll('[class*="preview-image_productItem"]')] : [];
+  }
+
+  async function addCarouselImagesToWrap(wrap, files, index, job) {
+    if (!files.length) throw new Error('勾选了新增图片，但没有可用图片');
+    const before = carouselItems(wrap).length;
+    const trigger = wrap.querySelector('[class*="upload-trigger_wrap"]');
+    if (!trigger) throw new Error(`第 ${index + 1} 个色值找不到素材中心入口`);
+    activeMaterialDialog = null;
+    setCarouselStatus(`第 ${index + 1} 个色值：打开素材中心…`);
+    await platformClick(trigger);
+    const dlg = await waitFor(() => materialDialog(), { timeout: 40000, desc: '素材中心弹窗' });
+    activeMaterialDialog = dlg;
+    await sleep(800);
+    const selectedBefore = selectedCount(dlg);
+    for (const file of files) {
+      assertCarouselRunning();
+      setCarouselStatus(`第 ${index + 1} 个色值：上传/选择 ${file.name}`);
+      await pickMaterial(dlg, file, {
+        uploadIfMissing: true,
+        cropW: job.cropW || 1350,
+        cropH: job.cropH || 1800,
+      });
+    }
+    const selectedAfter = selectedCount(dlg);
+    if (selectedBefore >= 0 && selectedAfter >= 0
+      && selectedAfter - selectedBefore !== files.length) {
+      throw new Error(`第 ${index + 1} 个色值新增图片选中数量不符`
+        + `（期望 ${files.length}，实际 ${selectedAfter - selectedBefore}）`);
+    }
+    await clickInDialog(dlg, '确认');
+    await waitFor(() => !materialDialog(), { timeout: 30000, desc: '素材中心弹窗关闭' });
+    activeMaterialDialog = null;
+    await waitFor(() => carouselItems(wrap).length >= before + files.length,
+      { timeout: 60000, desc: `第 ${index + 1} 个色值新增轮播图` });
+    log(`第 ${index + 1} 个色值已新增 ${files.length} 张轮播图`);
+  }
+
+  function submitConfirmDialog() {
+    return allVisible(document)
+      .filter((el) => /MDL_innerWrapper|modal|dialog/i.test(el.className || ''))
+      .filter((el) => /提交|确认/.test(el.innerText || ''))
+      .filter((el) => allVisible(el).some((node) =>
+        ['确认', '确定'].includes((node.innerText || '').trim())))
+      .sort((a, b) => b.querySelectorAll('*').length - a.querySelectorAll('*').length)[0] || null;
+  }
+
+  async function waitForSubmitResult() {
+    try {
+      await waitFor(() => {
+        if (!location.pathname.includes('/goods/images-edit')) return true;
+        const text = (document.body.innerText || '').replace(/\s+/g, ' ');
+        return /提交成功|更新成功|操作成功|已提交/.test(text);
+      }, { timeout: 20000, interval: 500, desc: '提交结果' });
+      return true;
+    } catch (err) {
+      return false;
+    }
+  }
+
+  async function runImageTaskEditStage() {
+    const job = carouselJob;
+    assertCarouselRunning();
+    const files = job.addImages ? (await dbGet(IMAGE_TASK_FILES_KEY) || []) : [];
+    setCarouselStatus('等待轮播图加载…');
+    await waitFor(() => carouselWraps().length > 0,
+      { timeout: 120000, desc: '轮播图区域' });
+    await sleep(1200);
+    let wraps = carouselWraps();
+    if (!wraps.length) throw new Error('页面上没有找到轮播图区域');
+    log(`图片更新页：检测到 ${wraps.length} 个色值轮播图组`);
+    for (let index = 0; index < wraps.length; index += 1) {
+      assertCarouselRunning();
+      wraps = carouselWraps();
+      const wrap = wraps[index];
+      if (!wrap) throw new Error(`第 ${index + 1} 个色值轮播图组消失`);
+      const items = carouselItems(wrap);
+      if (items.length < job.deleteIndex) {
+        throw new Error(`第 ${index + 1} 个色值只有 ${items.length} 张轮播图，`
+          + `无法删除第 ${job.deleteIndex} 张`);
+      }
+      const target = items[job.deleteIndex - 1];
+      const deleteIcon = target.querySelector('[class*="preview-image_deleteIcon"]');
+      if (!deleteIcon) throw new Error(`第 ${index + 1} 个色值找不到删除图标`);
+      const countBefore = items.length;
+      setCarouselStatus(`第 ${index + 1}/${wraps.length} 个色值：删除第 ${job.deleteIndex} 张…`);
+      await platformClick(deleteIcon);
+      await waitFor(() => carouselItems(wrap).length < countBefore,
+        { timeout: 20000, desc: `第 ${index + 1} 个色值删除轮播图` });
+      log(`第 ${index + 1} 个色值已删除第 ${job.deleteIndex} 张轮播图`);
+      if (job.addImages) {
+        const liveWrap = carouselWraps()[index] || wrap;
+        await addCarouselImagesToWrap(liveWrap, files, index, job);
+      }
+    }
+    const productId = job.ids[job.index];
+    job.results = Array.isArray(job.results) ? job.results : [];
+    if (job.dryRun) {
+      const finalCounts = carouselWraps().map((wrap) => carouselItems(wrap).length);
+      job.results[job.index] = {
+        id: productId,
+        status: 'drill',
+        wraps: finalCounts.length,
+        counts: finalCounts,
+        at: Date.now(),
+      };
+      log(`ID ${productId}：安全演练完成（未提交）`);
+    } else {
+      assertCarouselRunning();
+      setCarouselStatus(`第 ${job.index + 1}/${job.ids.length} 个：点击提交…`);
+      const submit = await waitFor(() => visibleCarouselButton('提交'),
+        { timeout: 20000, desc: '提交按钮' });
+      await platformClick(submit);
+      await sleep(800);
+      const dlg = submitConfirmDialog();
+      if (dlg) {
+        const confirm = allVisible(dlg).find((el) =>
+          ['确认', '确定'].includes((el.innerText || '').trim()));
+        if (confirm) await platformClick(clickable(confirm));
+      }
+      const confirmed = await waitForSubmitResult();
+      if (!confirmed) {
+        job.results[job.index] = { id: productId, status: 'submit-pending', at: Date.now() };
+        throw new Error(`ID ${productId} 已点击提交，但未识别到成功提示；`
+          + '为避免重复提交，本批次已暂停，请人工确认后再继续');
+      }
+      const finalCounts = carouselWraps().map((wrap) => carouselItems(wrap).length);
+      job.results[job.index] = {
+        id: productId,
+        status: 'submitted',
+        wraps: finalCounts.length,
+        counts: finalCounts,
+        at: Date.now(),
+      };
+      log(`ID ${productId} 已提交成功`);
+    }
+    if (job.index + 1 < job.ids.length) {
+      job.index += 1;
+      job.stage = 'start';
+      job.progress = `已完成 ${job.index}/${job.ids.length}，准备下一个 ${job.ids[job.index]}`;
+      await saveCarouselJob(job);
+      setCarouselStatus(job.progress);
+      log(`ID ${productId} 完成，自动继续下一个：${job.ids[job.index]}`);
+      await sleep(1000);
+      await safeNavigate(IMAGE_TASK_URL);
+      return;
+    }
+    job.status = 'done';
+    job.progress = job.dryRun
+      ? `全部完成 ${job.ids.length}/${job.ids.length}（安全演练，未提交）`
+      : `全部完成 ${job.ids.length}/${job.ids.length}（已提交）`;
+    await saveCarouselJob(job);
+    setCarouselStatus(job.progress, 'ok');
+    log(`轮播图维护批次完成：${job.ids.length}/${job.ids.length} 个 ID`
+      + `${job.dryRun ? '（未提交）' : ''}`);
+    if (ui.carouselStart) ui.carouselStart.disabled = false;
+    if (ui.carouselStop) ui.carouselStop.disabled = true;
+  }
+
+  async function resumeCarouselJob() {
+    if (carouselResumeStarted) return;
+    carouselResumeStarted = true;
+    const job = await dbGet(IMAGE_TASK_JOB_KEY);
+    if (!job || job.status !== 'running' || job.cancelled) return;
+    carouselJob = job;
+    if (ui.carouselStart) ui.carouselStart.disabled = true;
+    if (ui.carouselStop) ui.carouselStop.disabled = false;
+    setCarouselStatus(job.progress || '继续执行…');
+    await sleep(1200);
+    if (job.stage === 'start' && isImageTaskPage()) {
+      runImageTaskStartStage().catch(handleCarouselError);
+    } else if (job.stage === 'edit' && isImagesEditPage()) {
+      runImageTaskEditStage().catch(handleCarouselError);
+    }
   }
 
   function preflightCheck(n) {
@@ -6287,6 +6810,7 @@
     showView(uiState.view || 'home');
     panelReady = true;
     log(`助手已就绪（v${VERSION}｜店铺：${uiState.shopName || '未识别'}${uiState.remark ? '｜备注：' + uiState.remark : ''}）`);
+    resumeCarouselJob().catch((err) => log('轮播图维护续跑失败：' + err.message, 'error'));
     if (state.status === 'running' && isBotTab()) {
       log('检测到未完成任务，自动续跑');
       runDriver();
@@ -6355,6 +6879,23 @@
     selectCard,
     selectPlannedTargetsForRow,
     getActiveMaterialDialog: () => activeMaterialDialog,
+    onStartCarouselTool,
+    onStopCarouselTool,
+    resumeCarouselJob,
+    runImageTaskStartStage,
+    runImageTaskEditStage,
+    getCarouselJob: () => carouselJob,
+    loadImageTaskJob: () => dbGet(IMAGE_TASK_JOB_KEY),
+    clearImageTaskJob: () => dbSet(IMAGE_TASK_JOB_KEY, null),
+    setCarouselFilesForTest: (files) => {
+      carouselAddFiles = Array.isArray(files) ? files : [];
+      if (ui.carouselImageInfo) {
+        ui.carouselImageInfo.textContent = carouselAddFiles.length
+          ? `${carouselAddFiles.length} 张：${carouselAddFiles.map((file) => file.name).join('、')}`
+          : '未选择';
+      }
+    },
+    importCarouselIdFile,
     waitFor,
     log,
   };

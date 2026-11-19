@@ -676,7 +676,49 @@
     return null;
   }
 
-  async function scanDrawer(drawer, countries, policy) {
+  function detectDrawerPriceCurrency(drawer, fallbackCurrency) {
+    const text = normalizeText(drawer?.innerText);
+    if (/原申报价格\(USD\)|新申报价格\(USD\)|US Dollar/i.test(text)) {
+      return "USD";
+    }
+    if (/原申报价格\(CNY\)|新申报价格\(CNY\)|原申报价格\(RMB\)/i.test(text)) {
+      return "RMB";
+    }
+    if (/\$/.test(text)) {
+      return "USD";
+    }
+    return fallbackCurrency === "USD" ? "USD" : "RMB";
+  }
+
+  function pageCurrencyCentsToRmbCents(cents, pageCurrency, fxRateToRmb) {
+    if (pageCurrency !== "USD") {
+      return cents;
+    }
+    const rate = Number(fxRateToRmb);
+    if (!Number.isFinite(rate) || rate <= 0) {
+      throw new Error("Temu 页面返回 USD，请选择美元模式并填写有效汇率");
+    }
+    return Math.round(cents * rate);
+  }
+
+  function rmbCentsToPageCurrencyCents(cents, pageCurrency, fxRateToRmb) {
+    if (pageCurrency !== "USD") {
+      return cents;
+    }
+    const rate = Number(fxRateToRmb);
+    if (!Number.isFinite(rate) || rate <= 0) {
+      throw new Error("Temu 页面返回 USD，请选择美元模式并填写有效汇率");
+    }
+    return Math.round(cents / rate);
+  }
+
+  async function scanDrawer(
+    drawer,
+    countries,
+    policy,
+    displayCurrency,
+    fxRateToRmb,
+  ) {
     const tables = [...drawer.querySelectorAll("table")];
     const table = tables.find(
       (candidate) =>
@@ -688,13 +730,14 @@
     }
     const scrollContainer = getDrawerScrollContainer(table, drawer);
     const expectedGroups = drawerExpectedGroupCount(drawer);
+    const pageCurrency = detectDrawerPriceCurrency(drawer, displayCurrency);
     const configBySite = new Map(
       countries.map((country) => [`${country.siteName}站`, country]),
     );
     const groups = new Map();
     const rowsByKey = new Map();
 
-    function addRow(group, skuLabel, platformRmbCents) {
+    function addRow(group, skuLabel, platformPageCents) {
       if (!group?.skcId || !group.siteName || !skuLabel) {
         return;
       }
@@ -702,11 +745,17 @@
       const floorRmbCents = countryConfig?.floorRmbCents ?? null;
       const submitPriceRmbCents =
         countryConfig?.submitPriceRmbCents ?? floorRmbCents;
+      const platformRmbCents = pageCurrencyCentsToRmbCents(
+        platformPageCents,
+        pageCurrency,
+        fxRateToRmb,
+      );
       const rowKey = [
         group.skcId,
         group.siteName,
         normalizeText(skuLabel),
         platformRmbCents,
+        platformPageCents,
       ].join("|");
       if (rowsByKey.has(rowKey)) {
         return;
@@ -718,6 +767,8 @@
         siteName: group.siteName,
         skuLabel: normalizeText(skuLabel),
         platformRmbCents,
+        platformPageCents,
+        platformPageCurrency: pageCurrency,
         floorRmbCents,
         submitPriceRmbCents,
         decision,
@@ -811,10 +862,22 @@
         )
         .map((row) => row.siteName),
     );
-    return { rows, groups, ineligibleSites, expectedGroups };
+    return {
+      rows,
+      groups,
+      ineligibleSites,
+      expectedGroups,
+      pageCurrency,
+    };
   }
 
-  async function applyRepricing(table, scrollContainer, groupsToReprice) {
+  async function applyRepricing(
+    table,
+    scrollContainer,
+    groupsToReprice,
+    pageCurrency,
+    fxRateToRmb,
+  ) {
     if (!groupsToReprice.length) {
       return;
     }
@@ -983,7 +1046,11 @@
         setInputValue(
           newPriceInput,
           amountText(
-            target.submitPriceRmbCents ?? target.floorRmbCents,
+            rmbCentsToPageCurrencyCents(
+              target.submitPriceRmbCents ?? target.floorRmbCents,
+              pageCurrency,
+              fxRateToRmb,
+            ),
           ),
         );
         processed.add(key);
@@ -1061,6 +1128,8 @@
     submitAllowed,
     skipKeys = [],
     executionState = {},
+    displayCurrency = "RMB",
+    fxRateToRmb = null,
   ) {
     throwIfCancelled();
     const staleDrawer = findDrawer();
@@ -1110,6 +1179,8 @@
         submitAllowed,
         skipKeys,
         executionState,
+        displayCurrency,
+        fxRateToRmb,
       );
       rows.push(...result.rows);
       submittedCount += result.submittedCount;
@@ -1137,6 +1208,8 @@
     submitAllowed,
     skipKeys = [],
     executionState = {},
+    displayCurrency = "RMB",
+    fxRateToRmb = null,
   ) {
     const batch = { batchNumber: queryGroup.batchNumber };
     const discovery = queryGroup;
@@ -1158,7 +1231,13 @@
     await filterDrawerSites(drawer, countries);
     throwIfCancelled();
     progress(`第 ${batch.batchNumber} 批：读取全部站点和 SKU 价格`);
-    const scanned = await scanDrawer(drawer, countries, policy);
+    const scanned = await scanDrawer(
+      drawer,
+      countries,
+      policy,
+      displayCurrency,
+      fxRateToRmb,
+    );
     if (!scanned.rows.length) {
       throw new Error("价格确认抽屉没有读取到 SKU 行");
     }
@@ -1219,6 +1298,11 @@
         }
       }
     }
+    for (const row of scanned.rows) {
+      if (row.decision === "ACCEPT_PLATFORM") {
+        row.submitPriceRmbCents = row.platformRmbCents;
+      }
+    }
     const countryBySite = new Map(
       countries.map((country) => [`${country.siteName}站`, country]),
     );
@@ -1248,6 +1332,8 @@
           drawer,
         ),
         repricedGroups,
+        scanned.pageCurrency,
+        fxRateToRmb,
       );
       for (const row of scanned.rows) {
         if (repriceGroupKeys.has(`${row.skcId}|${row.siteName}`)) {
@@ -1336,6 +1422,8 @@
             payload.submit !== false,
             payload.skipKeys || [],
             executionState,
+            payload.displayCurrency || "RMB",
+            payload.fxRateToRmb,
           );
           break;
         } catch (error) {

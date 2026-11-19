@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "批量流量加速 Demo",
-  "version": "0.1.0",
-  "description": "TEMU 流量分析批量增长预演工具：规则筛选、影响预估、分批执行与结果记录。",
+  "name": "指定规格流量加速",
+  "version": "0.6.17",
+  "description": "按 SKU 或类目批量缓存 SPU/SKC，支持指定规格价格和按价格自动匹配流量加速档位。",
   "minimum_chrome_version": "116",
   "icons": {
     "16": "assets/icon16.png",
@@ -19,6 +19,7 @@
   "host_permissions": [
     "https://agentseller.temu.com/*",
     "https://agentseller-eu.temu.com/*",
+    "https://agentseller-us.temu.com/*",
     "https://seller.kuajingmaihuo.com/*",
     "https://allinone.uban360.com/*"
   ],
@@ -41,6 +42,7 @@
       "matches": [
         "https://agentseller.temu.com/*",
         "https://agentseller-eu.temu.com/*",
+        "https://agentseller-us.temu.com/*",
         "https://seller.kuajingmaihuo.com/*",
         "https://allinone.uban360.com/*"
       ],

@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Temu 商品首图采集器",
-  "description": "按简单、多首图和完整三种模式采集 Temu 商品列表图片并在本地打包。",
-  "version": "0.3.6",
+  "description": "四种模式采集 Temu 商品图片，支持自动翻页、预览筛选、重复过滤和链接导出。",
+  "version": "0.4.0",
   "icons": {
     "16": "icons/icon.png",
     "48": "icons/icon.png",

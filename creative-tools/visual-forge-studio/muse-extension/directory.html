@@ -18,10 +18,11 @@
 
       <section class="card">
         <h2>选择任务归档位置</h2>
-        <p>选择一个文件夹后，扩展会在其中自动创建任务子目录。浏览器重启、扩展重载或权限失效时可以重新打开本页授权。</p>
+        <p>选择一个文件夹后，扩展会在其中自动创建任务子目录。浏览器权限询问时请选择“每次访问时都允许”，否则刷新页面或重新打开浏览器后可能再次要求授权。</p>
         <div class="directory-status" id="directoryStatus">正在读取目录状态…</div>
         <div class="actions">
-          <button id="chooseDirectory" class="primary" type="button">选择或重新授权目录</button>
+          <button id="reauthorizeDirectory" class="primary" type="button">重新授权当前目录</button>
+          <button id="chooseDirectory" type="button">选择新目录</button>
           <button id="closePage" type="button">完成并关闭</button>
         </div>
         <div id="status" class="status" role="status"></div>

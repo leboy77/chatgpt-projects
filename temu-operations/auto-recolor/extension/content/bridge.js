@@ -51,6 +51,7 @@ window.addEventListener('message', (event) => {
       clear: !!data.clear,
       clickX: data.clickX,
       clickY: data.clickY,
+      tabId: data.tabId,
     }).then((res) => {
       window.postMessage({
         __temuImageBot: true,
@@ -70,7 +71,12 @@ window.addEventListener('message', (event) => {
   }
 
   if (data.type === 'REAL_CLICK') {
-    chrome.runtime.sendMessage({ type: 'REAL_CLICK', x: data.x, y: data.y }).then((res) => {
+    chrome.runtime.sendMessage({
+      type: 'REAL_CLICK',
+      x: data.x,
+      y: data.y,
+      tabId: data.tabId,
+    }).then((res) => {
       window.postMessage({
         __temuImageBot: true,
         type: 'REAL_CLICK_RESULT',
@@ -89,7 +95,11 @@ window.addEventListener('message', (event) => {
   }
 
   if (data.type === 'NAVIGATE_URL') {
-    chrome.runtime.sendMessage({ type: 'NAVIGATE_URL', url: data.url }).then((res) => {
+    chrome.runtime.sendMessage({
+      type: 'NAVIGATE_URL',
+      url: data.url,
+      tabId: data.tabId,
+    }).then((res) => {
       window.postMessage({
         __temuImageBot: true,
         type: 'NAVIGATE_URL_RESULT',
@@ -119,6 +129,25 @@ window.addEventListener('message', (event) => {
       window.postMessage({
         __temuImageBot: true,
         type: 'FIND_CONFIRM_TAB_RESULT',
+        reqId: data.reqId,
+        ok: false,
+        error: String(err && err.message || err),
+      }, '*');
+    });
+  }
+
+  if (data.type === 'FIND_TAB') {
+    chrome.runtime.sendMessage({ type: 'FIND_TAB', urlKeyword: data.urlKeyword }).then((res) => {
+      window.postMessage({
+        __temuImageBot: true,
+        type: 'FIND_TAB_RESULT',
+        reqId: data.reqId,
+        ...res,
+      }, '*');
+    }).catch((err) => {
+      window.postMessage({
+        __temuImageBot: true,
+        type: 'FIND_TAB_RESULT',
         reqId: data.reqId,
         ok: false,
         error: String(err && err.message || err),

@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Visual Forge 团队看板</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <div id="loginView" class="login-view">
+      <form id="loginForm" class="login-card">
+        <div class="brand">
+          <span class="brand-mark">VF</span>
+          <div>
+            <strong>Visual Forge</strong>
+            <small>公司内部图片汇总看板</small>
+          </div>
+        </div>
+        <label>
+          <span>用户名</span>
+          <input id="loginUsername" autocomplete="username" value="admin">
+        </label>
+        <label>
+          <span>密码</span>
+          <input id="loginPassword" type="password" autocomplete="current-password" value="admin123">
+        </label>
+        <button type="submit">登录</button>
+        <p id="loginError" class="error"></p>
+      </form>
+    </div>
+
+    <div id="appView" class="app-view" hidden>
+      <header class="topbar">
+        <div class="brand">
+          <span class="brand-mark">VF</span>
+          <div>
+            <strong>团队看板</strong>
+            <small id="userMeta">--</small>
+          </div>
+        </div>
+        <div class="topbar-actions">
+          <button id="newTaskButton" type="button">＋ 手动上传任务</button>
+          <button id="logoutButton" type="button">退出</button>
+        </div>
+      </header>
+
+      <main>
+        <section class="metrics">
+          <article><span>任务总数</span><strong id="metricTasks">0</strong></article>
+          <article><span>图片文件</span><strong id="metricArtifacts">0</strong></article>
+          <article><span>今日任务</span><strong id="metricToday">0</strong></article>
+          <article><span>成员数</span><strong id="metricUsers">0</strong></article>
+        </section>
+
+        <section class="filters">
+          <input id="searchInput" placeholder="搜索提示词或货号">
+          <select id="userFilter">
+            <option value="">全部成员</option>
+          </select>
+          <select id="moduleFilter">
+            <option value="">全部模块</option>
+            <option value="product_generate">文案生图</option>
+            <option value="product_color_finalize">商品配色</option>
+            <option value="pattern_batch_finalize">印花套图</option>
+            <option value="logo_recolor">Logo 多色</option>
+            <option value="logo_color_batch">多 Logo 同色</option>
+          </select>
+          <select id="statusFilter">
+            <option value="">全部状态</option>
+            <option value="completed">已完成</option>
+            <option value="failed">失败</option>
+            <option value="running">生成中</option>
+          </select>
+          <button id="refreshButton" type="button">刷新</button>
+        </section>
+
+        <div id="taskGrid" class="task-grid"></div>
+        <p id="emptyState" class="empty" hidden>暂无任务</p>
+
+        <section id="memberSection" class="member-section" hidden>
+          <div class="section-head">
+            <h2>成员管理</h2>
+            <button id="addUserButton" type="button">＋ 添加成员</button>
+          </div>
+          <div id="userList" class="user-list"></div>
+        </section>
+      </main>
+    </div>
+
+    <dialog id="taskDialog">
+      <div class="dialog-head">
+        <h2 id="taskDialogTitle">任务详情</h2>
+        <button id="closeTaskButton" type="button">×</button>
+      </div>
+      <div id="taskDialogBody"></div>
+    </dialog>
+
+    <dialog id="uploadDialog">
+      <div class="dialog-head">
+        <h2>手动上传任务</h2>
+        <button id="closeUploadButton" type="button">×</button>
+      </div>
+      <form id="uploadForm">
+        <label><span>模块</span>
+          <select id="uploadModule">
+            <option value="product_generate">文案生图</option>
+            <option value="product_color_finalize">商品配色</option>
+            <option value="pattern_batch_finalize">印花套图</option>
+            <option value="logo_recolor">Logo 多色</option>
+            <option value="logo_color_batch">多 Logo 同色</option>
+          </select>
+        </label>
+        <label><span>货号</span><input id="uploadSku" placeholder="可选"></label>
+        <label><span>提示词 / 描述</span><textarea id="uploadPrompt" rows="3"></textarea></label>
+        <label><span>图片文件</span><input id="uploadFiles" type="file" accept="image/*" multiple></label>
+        <button type="submit">上传</button>
+      </form>
+    </dialog>
+
+    <dialog id="userDialog">
+      <div class="dialog-head">
+        <h2>添加成员</h2>
+        <button id="closeUserButton" type="button">×</button>
+      </div>
+      <form id="userForm">
+        <label><span>用户名</span><input id="newUsername"></label>
+        <label><span>显示名称</span><input id="newDisplayName"></label>
+        <label><span>密码</span><input id="newPassword" type="password"></label>
+        <label><span>角色</span>
+          <select id="newRole">
+            <option value="member">成员</option>
+            <option value="viewer">访客</option>
+            <option value="admin">管理员</option>
+          </select>
+        </label>
+        <button type="submit">创建</button>
+      </form>
+    </dialog>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

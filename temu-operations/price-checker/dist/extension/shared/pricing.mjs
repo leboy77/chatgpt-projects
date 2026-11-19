@@ -3,6 +3,11 @@ export const ComparisonPolicy = Object.freeze({
   GREATER_OR_EQUAL: "GREATER_OR_EQUAL",
 });
 
+export const PriceCurrency = Object.freeze({
+  RMB: "RMB",
+  USD: "USD",
+});
+
 export const Decision = Object.freeze({
   APPROVED: "APPROVED",
   ACCEPT_PLATFORM: "ACCEPT_PLATFORM",
@@ -69,6 +74,50 @@ export function convertPlatformPriceToRmbCents(
   }
 
   return Math.round(originalCents * rate);
+}
+
+export function convertRmbCentsToCurrencyCents(
+  rmbCents,
+  currency,
+  fxRateToRmb,
+) {
+  if (!Number.isInteger(rmbCents) || rmbCents < 0) {
+    throw new TypeError("人民币金额分必须是非负整数");
+  }
+  const normalizedCurrency = String(currency ?? "").trim().toUpperCase();
+  if (normalizedCurrency === PriceCurrency.RMB) {
+    return rmbCents;
+  }
+  if (normalizedCurrency !== PriceCurrency.USD) {
+    throw new TypeError(`不支持的显示币种：${currency}`);
+  }
+  const rate = Number(fxRateToRmb);
+  if (!Number.isFinite(rate) || rate <= 0) {
+    throw new RangeError("汇率必须大于 0");
+  }
+  return Math.round(rmbCents / rate);
+}
+
+export function convertCurrencyCentsToRmbCents(
+  currencyCents,
+  currency,
+  fxRateToRmb,
+) {
+  if (!Number.isInteger(currencyCents) || currencyCents < 0) {
+    throw new TypeError("显示币种金额分必须是非负整数");
+  }
+  const normalizedCurrency = String(currency ?? "").trim().toUpperCase();
+  if (normalizedCurrency === PriceCurrency.RMB) {
+    return currencyCents;
+  }
+  if (normalizedCurrency !== PriceCurrency.USD) {
+    throw new TypeError(`不支持的显示币种：${currency}`);
+  }
+  const rate = Number(fxRateToRmb);
+  if (!Number.isFinite(rate) || rate <= 0) {
+    throw new RangeError("汇率必须大于 0");
+  }
+  return Math.round(currencyCents * rate);
 }
 
 export function decidePrice({

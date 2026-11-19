@@ -21,7 +21,7 @@ test("parses one logo with multiple colors", () => {
 
 test("parses unified logo color", () => {
   const result = parser.parse("/vf color D4684F");
-  assert.equal(result.kind, "logo_color_batch");
+  assert.equal(result.kind, "logo_image_recolor");
   assert.equal(result.options.color, "#D4684F");
 });
 
@@ -43,7 +43,7 @@ test("rejects invalid count", () => {
 
 test("supports Chinese command aliases", () => {
   assert.equal(parser.parse("/vf 换色 #111111").kind, "logo_recolor");
-  assert.equal(parser.parse("/vf 统一色 #111111").kind, "logo_color_batch");
+  assert.equal(parser.parse("/vf 统一色 #111111").kind, "logo_image_recolor");
   assert.equal(parser.parse("/vf 生图 咖啡杯").kind, "product_generate");
 });
 

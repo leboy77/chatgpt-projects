@@ -14,7 +14,10 @@ async function getModelConfig() {
   return { ...DEFAULT_MODEL_CONFIG, ...(stored.modelConfig || {}) };
 }
 
-async function fetchGeneratedImage(url) {
+async function fetchGeneratedMedia(
+  url,
+  { maxBytes = 30 * 1024 * 1024, mediaLabel = "生成图片" } = {},
+) {
   const parsed = new URL(url);
   const allowed =
     parsed.protocol === "https:" &&
@@ -24,15 +27,17 @@ async function fetchGeneratedImage(url) {
       parsed.hostname.endsWith(".facebook.com") ||
       parsed.hostname.endsWith(".cdninstagram.com"));
   if (!allowed) {
-    throw new Error("生成图片域名不在 Muse/图片 CDN 白名单内");
+    throw new Error(`${mediaLabel}域名不在 Muse 媒体 CDN 白名单内`);
   }
   const response = await fetch(url, { credentials: "omit" });
   if (!response.ok) {
-    throw new Error(`生成图片下载失败：HTTP ${response.status}`);
+    throw new Error(`${mediaLabel}下载失败：HTTP ${response.status}`);
   }
   const data = await response.arrayBuffer();
-  if (data.byteLength > 30 * 1024 * 1024) {
-    throw new Error("单张 Muse 生成图片超过 30MB");
+  if (data.byteLength > maxBytes) {
+    throw new Error(
+      `单个 Muse ${mediaLabel}超过 ${Math.round(maxBytes / 1024 / 1024)}MB`,
+    );
   }
   const bytes = new Uint8Array(data);
   const chunks = [];
@@ -45,6 +50,17 @@ async function fetchGeneratedImage(url) {
     data: btoa(chunks.join("")),
     type: response.headers.get("content-type") || "image/png",
   };
+}
+
+async function fetchGeneratedImage(url) {
+  return fetchGeneratedMedia(url);
+}
+
+async function fetchGeneratedVideo(url) {
+  return fetchGeneratedMedia(url, {
+    maxBytes: 100 * 1024 * 1024,
+    mediaLabel: "生成视频",
+  });
 }
 
 async function handleMessage(message, sender = {}) {
@@ -71,6 +87,8 @@ async function handleMessage(message, sender = {}) {
       return {};
     case "VF_FETCH_IMAGE":
       return fetchGeneratedImage(message.url);
+    case "VF_FETCH_VIDEO":
+      return fetchGeneratedVideo(message.url);
     case "VF_COMMAND_FROM_MUSE": {
       await chrome.storage.session.set({
         pendingCommand: message.command || "",

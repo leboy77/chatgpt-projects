@@ -1,4 +1,5 @@
 :root {
+  --vf-ui-scale: 1.1;
   color: #0b0d12;
   background: #ffffff;
   font-family:
@@ -38,10 +39,13 @@ button {
 }
 
 .vf-app {
-  height: 100vh;
+  width: calc(100% / var(--vf-ui-scale));
+  height: calc(100vh / var(--vf-ui-scale));
   display: flex;
   flex-direction: column;
   background: #ffffff;
+  zoom: var(--vf-ui-scale);
+  transform-origin: top left;
 }
 
 .vf-topbar {
@@ -137,6 +141,40 @@ button {
   box-shadow: 0 0 0 3px rgba(217, 45, 32, 0.1);
 }
 
+.vf-font-scale {
+  display: flex;
+  align-items: center;
+  flex: none;
+  overflow: hidden;
+  border: 1px solid #e4e7ec;
+  border-radius: 9px;
+  background: #f8fafc;
+}
+
+.vf-font-scale button {
+  min-width: 24px;
+  height: 25px;
+  border: 0;
+  padding: 0 4px;
+  color: #475467;
+  background: transparent;
+  cursor: pointer;
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.vf-font-scale button:hover {
+  color: #0866ff;
+  background: #edf4ff;
+}
+
+#vfFontScaleValue {
+  min-width: 36px;
+  border-right: 1px solid #eaecf0;
+  border-left: 1px solid #eaecf0;
+  font-weight: 600;
+}
+
 .vf-round-button {
   width: 32px;
   height: 32px;
@@ -211,7 +249,7 @@ button {
 
 .vf-tabs {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 2px;
   margin: 0 0 14px;
   padding: 4px;
@@ -294,6 +332,7 @@ button {
 
 .vf-task-controls {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
@@ -304,6 +343,10 @@ button {
   color: #667085;
   background: #ffffff;
   font-size: 8px;
+}
+
+.vf-task-controls > span {
+  flex: 1;
 }
 
 .vf-task-controls button {
@@ -675,9 +718,49 @@ button {
   box-shadow: 0 0 0 3px rgba(8, 102, 255, 0.1);
 }
 
+.vf-field output {
+  float: right;
+  color: #0866ff;
+  font-family: Consolas, monospace;
+}
+
+.vf-field input[type="range"] {
+  height: 28px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  accent-color: #0866ff;
+}
+
+.vf-color-pair {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  gap: 7px;
+}
+
+.vf-color-pair input[type="color"] {
+  width: 42px;
+  height: 42px;
+  padding: 4px;
+  cursor: pointer;
+}
+
+.vf-color-pair button {
+  min-height: 42px;
+  border: 1px solid #d0d5dd;
+  border-radius: 11px;
+  padding: 0 10px;
+  color: #344054;
+  background: #ffffff;
+  cursor: pointer;
+  font-size: 9px;
+  font-weight: 600;
+}
+
 .vf-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 9px;
 }
 
@@ -1052,6 +1135,307 @@ button {
   word-break: break-all;
 }
 
+.vf-template-editor {
+  margin: 0 0 13px;
+  border: 1px solid #d0d5dd;
+  border-radius: 12px;
+  background: #fbfcfe;
+}
+
+.vf-template-editor summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 11px 12px;
+  cursor: pointer;
+  color: #344054;
+  font-size: 9px;
+  font-weight: 600;
+  list-style: none;
+}
+
+.vf-template-editor summary::-webkit-details-marker {
+  display: none;
+}
+
+.vf-template-editor summary::before {
+  content: "＋";
+  color: #0866ff;
+}
+
+.vf-template-editor[open] summary::before {
+  content: "−";
+}
+
+.vf-template-editor summary span {
+  flex: 1;
+}
+
+.vf-template-editor summary small {
+  color: #98a2b3;
+  font-size: 8px;
+  font-weight: 400;
+}
+
+.vf-template-editor > p {
+  margin: 0;
+  padding: 0 12px 9px;
+  color: #667085;
+  font-size: 8px;
+  line-height: 1.6;
+}
+
+.vf-template-editor > p code {
+  color: #344054;
+  font-family: Consolas, monospace;
+}
+
+.vf-template-editor textarea {
+  width: calc(100% - 24px);
+  min-height: 180px;
+  display: block;
+  margin: 0 12px;
+  border: 1px solid #d0d5dd;
+  border-radius: 10px;
+  padding: 10px;
+  color: #344054;
+  background: #ffffff;
+  font: 9px/1.65 Consolas, monospace;
+  resize: vertical;
+}
+
+.vf-template-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 7px;
+  padding: 9px 12px 12px;
+}
+
+.vf-template-actions button {
+  min-height: 30px;
+  border: 1px solid #d0d5dd;
+  border-radius: 8px;
+  padding: 0 9px;
+  color: #344054;
+  background: #ffffff;
+  cursor: pointer;
+  font-size: 8px;
+}
+
+.vf-memory-panel {
+  margin: 0 0 13px;
+  padding: 11px;
+  border: 1px solid #d0d5dd;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.vf-memory-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.vf-memory-head strong,
+.vf-memory-head small {
+  display: block;
+}
+
+.vf-memory-head strong {
+  color: #344054;
+  font-size: 9px;
+}
+
+.vf-memory-head small {
+  margin-top: 2px;
+  color: #98a2b3;
+  font-size: 8px;
+}
+
+.vf-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #475467;
+  cursor: pointer;
+  font-size: 8px;
+}
+
+.vf-switch input {
+  accent-color: #0866ff;
+}
+
+.vf-memory-list {
+  display: grid;
+  gap: 6px;
+  margin-top: 9px;
+}
+
+.vf-memory-item {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 6px;
+  border: 1px solid #eaecf0;
+  border-radius: 9px;
+  background: #ffffff;
+}
+
+.vf-memory-item img {
+  width: 42px;
+  height: 42px;
+  border-radius: 6px;
+  object-fit: cover;
+  background: #f2f4f7;
+}
+
+.vf-memory-copy {
+  min-width: 0;
+}
+
+.vf-memory-copy strong,
+.vf-memory-copy small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vf-memory-copy strong {
+  color: #344054;
+  font-size: 8px;
+}
+
+.vf-memory-copy small {
+  margin-top: 3px;
+  color: #98a2b3;
+  font-size: 7px;
+}
+
+.vf-memory-item button {
+  min-height: 26px;
+  border: 1px solid #d0d5dd;
+  border-radius: 7px;
+  padding: 0 7px;
+  color: #0866ff;
+  background: #ffffff;
+  cursor: pointer;
+  font-size: 7px;
+}
+
+.vf-memory-empty {
+  margin: 9px 0 0;
+  color: #98a2b3;
+  font-size: 8px;
+  line-height: 1.55;
+}
+
+.vf-direct-prompt {
+  margin: 0 0 12px 2px;
+}
+
+.vf-prompt-catalog {
+  display: grid;
+  gap: 10px;
+}
+
+.vf-prompt-card {
+  padding: 11px;
+  border: 1px solid #d0d5dd;
+  border-radius: 12px;
+  background: #fbfcfe;
+}
+
+.vf-prompt-card header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.vf-prompt-card strong,
+.vf-prompt-card small {
+  display: block;
+}
+
+.vf-prompt-card strong {
+  color: #344054;
+  font-size: 9px;
+}
+
+.vf-prompt-card small {
+  margin-top: 3px;
+  color: #98a2b3;
+  font-size: 7px;
+  line-height: 1.5;
+}
+
+.vf-prompt-card button {
+  flex: none;
+  border: 0;
+  padding: 0;
+  color: #0866ff;
+  background: transparent;
+  cursor: pointer;
+  font-size: 8px;
+}
+
+.vf-prompt-card textarea {
+  width: 100%;
+  min-height: 150px;
+  border: 1px solid #d0d5dd;
+  border-radius: 9px;
+  padding: 9px;
+  color: #344054;
+  background: #ffffff;
+  font: 8px/1.65 Consolas, monospace;
+  resize: vertical;
+}
+
+.vf-muse-returned {
+  margin-top: 18px;
+  padding: 12px;
+  border: 1px solid #d0d5dd;
+  border-radius: 13px;
+  background: #f8fafc;
+}
+
+.vf-muse-returned .vf-section-head {
+  margin-bottom: 9px;
+}
+
+.vf-muse-returned-meta {
+  color: #667085;
+  font-size: 8px;
+}
+
+.vf-muse-returned-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.vf-muse-returned-grid a,
+.vf-muse-returned-grid > div {
+  aspect-ratio: 1;
+  overflow: hidden;
+  border-radius: 8px;
+  background: #eaecf0;
+}
+
+.vf-muse-returned-grid img,
+.vf-muse-returned-grid video {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+  background: #101828;
+}
+
 .vf-history {
   margin-top: 22px;
   padding-top: 14px;
@@ -1182,11 +1566,13 @@ button {
   line-height: 1.2;
 }
 
-.vf-outputs img {
+.vf-outputs img,
+.vf-outputs video {
   width: 100%;
   height: 100%;
   display: block;
   object-fit: cover;
+  background: #101828;
 }
 
 .vf-job-actions {
@@ -1365,6 +1751,155 @@ button {
   background: rgba(180, 35, 24, 0.96);
 }
 
+.vf-task-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 14px 14px;
+}
+
+.vf-task-toolbar .vf-secondary {
+  flex: 1;
+}
+
+#vfQueueCopyTasks {
+  flex-basis: 100%;
+}
+
+.vf-queue-controls {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  margin: -5px 14px 14px;
+  padding: 9px 10px;
+  border: 1px solid #eaecf0;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.vf-queue-controls button {
+  min-height: 30px;
+  border: 1px solid #d0d5dd;
+  border-radius: 8px;
+  padding: 0 9px;
+  color: #344054;
+  background: #ffffff;
+  cursor: pointer;
+  font-size: 8px;
+}
+
+.vf-queue-controls button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.vf-queue-controls span {
+  color: #667085;
+  font-size: 8px;
+  line-height: 1.45;
+  text-align: right;
+}
+
+.vf-copy-task-list {
+  display: grid;
+  gap: 10px;
+  margin: 0 14px;
+}
+
+.vf-copy-task {
+  border: 1px solid rgba(29, 41, 36, 0.12);
+  border-radius: 12px;
+  padding: 10px;
+  background: rgba(249, 246, 239, 0.82);
+}
+
+.vf-copy-task-head {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.vf-copy-task-thumb {
+  width: 52px;
+  height: 64px;
+  flex: none;
+  border-radius: 7px;
+  object-fit: cover;
+  background: #e5dfd5;
+}
+
+.vf-copy-task-title {
+  min-width: 0;
+  flex: 1;
+}
+
+.vf-copy-task-title strong {
+  display: block;
+  overflow: hidden;
+  color: #263a31;
+  font-size: 11px;
+  line-height: 1.45;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vf-copy-task-title small {
+  display: block;
+  margin-top: 3px;
+  color: #68716b;
+  font-size: 9px;
+  line-height: 1.4;
+}
+
+.vf-copy-task-prompt {
+  display: -webkit-box;
+  overflow: hidden;
+  margin: 8px 0 0;
+  color: #4e5952;
+  font-size: 9px;
+  line-height: 1.5;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.vf-copy-task-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.vf-copy-count {
+  width: 52px;
+  min-height: 30px;
+  border: 1px solid rgba(29, 41, 36, 0.18);
+  border-radius: 8px;
+  padding: 0 5px;
+  color: #263a31;
+  background: #ffffff;
+  text-align: center;
+  font-size: 9px;
+}
+
+.vf-copy-task-actions button {
+  min-height: 30px;
+  border: 1px solid rgba(29, 41, 36, 0.18);
+  border-radius: 8px;
+  padding: 0 10px;
+  color: #263a31;
+  background: transparent;
+  cursor: pointer;
+  font-size: 9px;
+}
+
+.vf-copy-task-actions button.is-primary {
+  border-color: #263a31;
+  color: #ffffff;
+  background: #263a31;
+}
+
 @media (max-width: 330px) {
   .vf-topbar {
     padding-inline: 12px;
@@ -1376,5 +1911,20 @@ button {
 
   .vf-tabs button {
     font-size: 8px;
+  }
+}
+
+@media (max-width: 460px) {
+  .vf-connection span {
+    display: none;
+  }
+
+  .vf-font-scale button {
+    min-width: 21px;
+    padding-inline: 2px;
+  }
+
+  #vfFontScaleValue {
+    min-width: 31px;
   }
 }

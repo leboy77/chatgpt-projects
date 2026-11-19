@@ -3,7 +3,8 @@ $ErrorActionPreference = "Stop"
 $projectRoot = [System.IO.Path]::GetFullPath(
     (Join-Path $PSScriptRoot "..")
 )
-$outputPath = Join-Path $projectRoot "batch-traffic-demo.zip"
+$manifest = Get-Content -Raw -Encoding UTF8 (Join-Path $projectRoot "manifest.json") | ConvertFrom-Json
+$outputPath = Join-Path $projectRoot "batch-traffic-accelerator-v$($manifest.version).zip"
 $temporaryDirectory = Join-Path $projectRoot ".package-demo"
 
 if (Test-Path -LiteralPath $temporaryDirectory) {
@@ -19,7 +20,12 @@ try {
         "content",
         "sidepanel",
         "assets",
-        "README.md"
+        "demo",
+        "PRD.md",
+        "TECHNICAL_DESIGN.md",
+        "AGENTS.md",
+        "README.md",
+        "IMPLEMENTATION_PATH.md"
     )) {
         Copy-Item `
             -LiteralPath (Join-Path $projectRoot $name) `

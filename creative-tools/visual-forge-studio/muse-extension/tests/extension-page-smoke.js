@@ -121,6 +121,28 @@ async function main() {
       );
 
       const master = await imageFile("master.png", "#203050", 128, 128, 32);
+      const logoGenerated = await imageFile(
+        "logo-redesign.png",
+        "#D4684F",
+        128,
+        128,
+        24,
+      );
+      let logoImageJob = await VisualForgeJobs.create(
+        "logo_image_generate",
+        {
+          prompt: "改成新的几何字母 Logo，只替换商品上已有 Logo",
+        },
+        [master, logoGenerated]
+      );
+      while (["queued", "running"].includes(logoImageJob.status) && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        logoImageJob = await VisualForgeJobs.get(logoImageJob.id);
+      }
+      const logoImageOutputs = (logoImageJob.outputs || []).filter(
+        (asset) => asset.variant_type === "logo_design",
+      );
+
       const variant = await imageFile("variant.png", "#AA2222", 128, 128, 32);
       let colorJob = await VisualForgeJobs.create(
         "product_color_finalize",
@@ -149,7 +171,7 @@ async function main() {
           size: "512x512",
           quality: "high",
         },
-        []
+        [await imageFile("copy-main.png", "#335577", 128, 128, 28)]
       );
       while (["queued", "running"].includes(generateJob.status) && Date.now() < deadline) {
         await new Promise((resolve) => setTimeout(resolve, 100));
@@ -185,6 +207,9 @@ async function main() {
         logoError: job.error,
         logoImages: logoImages.length,
         logoArchiveError: job.archive_error,
+        logoImageStatus: logoImageJob.status,
+        logoImageError: logoImageJob.error,
+        logoImageOutputs: logoImageOutputs.length,
         colorStatus: colorJob.status,
         colorError: colorJob.error,
         colorDelta: corrected?.delta_e,
@@ -212,6 +237,12 @@ async function main() {
   }
   if (payload.logoStatus !== "succeeded" || payload.logoImages !== 2) {
     throw new Error(`Logo job failed: ${JSON.stringify(payload)}`);
+  }
+  if (
+    payload.logoImageStatus !== "succeeded" ||
+    payload.logoImageOutputs !== 1
+  ) {
+    throw new Error(`Main-image logo job failed: ${JSON.stringify(payload)}`);
   }
   if (payload.colorStatus !== "succeeded" || !Number.isFinite(payload.colorDelta)) {
     throw new Error(`Product color job failed: ${JSON.stringify(payload)}`);
@@ -245,8 +276,8 @@ async function main() {
   const reloadPayload = JSON.parse(reloadResult.result.value);
   if (
     reloadPayload.connection !== "扩展演示模型" ||
-    reloadPayload.jobs < 4 ||
-    reloadPayload.cards < 4
+    reloadPayload.jobs < 5 ||
+    reloadPayload.cards < 5
   ) {
     throw new Error(`History did not survive reload: ${JSON.stringify(reloadPayload)}`);
   }

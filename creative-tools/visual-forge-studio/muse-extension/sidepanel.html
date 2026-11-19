@@ -24,6 +24,11 @@
           <i></i>
           <span>连接中</span>
         </div>
+        <div class="vf-font-scale" title="调整界面和字体大小，也可按 Ctrl + 鼠标滚轮">
+          <button id="vfFontDecrease" type="button" aria-label="缩小字体">A−</button>
+          <button id="vfFontScaleValue" type="button" aria-label="恢复默认字体大小">110%</button>
+          <button id="vfFontIncrease" type="button" aria-label="放大字体">A+</button>
+        </div>
         <button class="vf-round-button" id="vfSettings" type="button" aria-label="设置">
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Z"></path>
@@ -44,20 +49,43 @@
         <nav class="vf-tabs" aria-label="生产模式">
           <button class="is-active" data-tab="product" type="button">商品配色</button>
           <button data-tab="recolor" type="button">Logo 多色</button>
-          <button data-tab="batch" type="button">多 Logo 同色</button>
+          <button data-tab="batch" type="button">Logo 重绘</button>
           <button data-tab="generate" type="button">产品裂变</button>
+          <button data-tab="video" type="button">产品视频</button>
+          <button data-tab="tasks" type="button">任务列表</button>
+          <button data-tab="prompts" type="button">提示词模板</button>
         </nav>
 
         <div class="vf-export-target">
           <span class="vf-folder-icon" aria-hidden="true">▰</span>
           <span>
-            <strong>自动保存到授权目录</strong>
+            <strong>自动保存到授权目录（可选）</strong>
             <small id="vfExportPath">尚未选择目录</small>
           </span>
           <button id="vfChooseExportFolder" type="button">选择</button>
         </div>
         <div class="vf-task-controls">
-          <span id="vfTaskState">当前没有运行中的任务</span>
+          <span id="vfTaskState">生成不依赖目录授权，授权后自动归档</span>
+          <label class="vf-switch">
+            <input id="vfAutoContinue" type="checkbox">
+            <span>自动回复“继续”</span>
+          </label>
+          <label class="vf-switch">
+            <input id="vfAutoContinueTimeout" type="checkbox" disabled>
+            <span>5 分钟无响应自动继续</span>
+          </label>
+          <label class="vf-switch" title="Muse 只返回文字、长时间没有图片时，自动回复“重新生成”；第二次仍无图则跳过当前项并记为失败">
+            <input id="vfAutoRegenerateTextOnly" type="checkbox">
+            <span>纯文本失败自动回复“重新生成”</span>
+          </label>
+          <label class="vf-switch" title="Muse 每返回一批图片或视频后立即下载到浏览器下载目录，不等待任务完成">
+            <input id="vfImmediateDownload" type="checkbox" checked>
+            <span>Muse 返回后立即下载</span>
+          </label>
+          <label class="vf-switch" title="开启后授权目录只写入 Muse 原始图片链接，不写入图片文件；图片仍保留在 IndexedDB 和预览中">
+            <input id="vfLinksOnlyExport" type="checkbox">
+            <span>仅下载图片链接</span>
+          </label>
           <button id="vfPauseTask" type="button" disabled>暂停任务</button>
         </div>
 
@@ -115,6 +143,22 @@
               <option value="upper">上装 / 外套 / 上衣</option>
             </select>
           </label>
+          <div class="vf-grid">
+            <label class="vf-field">
+              <span>Muse 请求方式</span>
+              <select id="vfColorRequestMode">
+                <option value="stable" selected>逐色稳定模式</option>
+                <option value="batch">多颜色批量模式</option>
+              </select>
+            </label>
+            <label class="vf-field">
+              <span>每批颜色 / 返回张数</span>
+              <input id="vfColorBatchSize" type="number" min="1" max="4" step="1" value="4" inputmode="numeric">
+            </label>
+          </div>
+          <p class="vf-command-tip">
+            批量模式会让 Muse 一次返回多张颜色图；数量不符、重复或请求失败时自动降级为逐色发送。
+          </p>
           <label class="vf-mask" for="vfMaskInput">
             <input id="vfMaskInput" type="file" accept="image/*">
             <span>
@@ -138,6 +182,9 @@
           </div>
           <button class="vf-retry" id="vfRetryFailedColors" type="button" disabled>
             重试失败色号
+          </button>
+          <button class="vf-secondary vf-wide-secondary" id="vfSaveColorTask" type="button">
+            保存商品配色任务
           </button>
           <p class="vf-command-tip">
             也可以直接在 Muse 输入：
@@ -165,27 +212,71 @@
           <button class="vf-primary" data-run="recolor" type="button">
             <span>生成颜色版本</span>
           </button>
+          <button class="vf-secondary vf-wide-secondary" id="vfSaveRecolorTask" type="button">
+            保存 Logo 多色任务
+          </button>
+          <p class="vf-command-tip">
+            Logo 多色完全在扩展内本地处理，不调用 Muse，因此没有 Muse 请求方式设置。
+          </p>
         </section>
 
         <section class="vf-panel" data-panel="batch">
+          <div class="vf-panel-intro">
+            <span>一张商品图 · Muse 重绘 Logo</span>
+            <p>保留商品版型、面料、背景和光影，只把主图里已有的 Logo 替换成新的设计。</p>
+          </div>
           <label class="vf-field">
             <span>货号（可选）</span>
             <input id="vfSkuBatch" placeholder="输入本次任务货号">
           </label>
           <label class="vf-field">
-            <span>统一品牌色</span>
-            <input id="vfBatchColor" value="#D4684F">
+            <span>新 Logo 设计要求</span>
+            <textarea
+              id="vfLogoPrompt"
+              rows="5"
+              placeholder="例如：改成简洁的几何字母标志，深蓝色，所有旧 Logo 使用同一套设计"
+            ></textarea>
           </label>
-          <label class="vf-field">
-            <span>背景处理</span>
-            <select id="vfBatchBackground">
-              <option value="auto">自动识别</option>
-              <option value="true">强制去除</option>
-              <option value="false">保留原图</option>
-            </select>
-          </label>
+          <div class="vf-grid">
+            <label class="vf-field">
+              <span>Muse 请求方式</span>
+              <select id="vfLogoRequestMode">
+                <option value="stable" selected>逐张稳定模式</option>
+                <option value="batch">单次多图模式</option>
+              </select>
+            </label>
+            <label class="vf-field">
+              <span>请求次数</span>
+              <input id="vfLogoRequestCount" type="number" min="1" step="1" value="1" inputmode="numeric">
+            </label>
+            <label class="vf-field">
+              <span>每批数量</span>
+              <select id="vfLogoOutputCount">
+                <option value="1" selected>1 张</option>
+                <option value="2">2 张</option>
+                <option value="3">3 张</option>
+                <option value="4">4 张</option>
+              </select>
+            </label>
+          </div>
+          <p class="vf-command-tip" id="vfLogoRequestSummary">
+            当前：1 次请求 × 每批 1 张 = 共 1 张。
+          </p>
+          <p class="vf-command-tip">
+            批量模式要求 Muse 返回指定数量的独立图片；数量异常、重复或请求失败时，自动改为一张一张发送。
+          </p>
+          <p class="vf-command-tip">
+            Muse 会重新绘制整张商品图，但提示词会明确限制只替换现有 Logo；商品细节和背景必须保持原样。
+          </p>
+          <div class="vf-progress-note" id="vfLogoDesignProgress" hidden></div>
           <button class="vf-primary" data-run="batch" type="button">
-            <span>统一应用到全部 Logo</span>
+            <span>让 Muse 重绘主图 Logo</span>
+          </button>
+          <button class="vf-secondary vf-wide-secondary" id="vfSaveLogoImageTask" type="button">
+            保存 / 更新 Logo 重绘任务
+          </button>
+          <button class="vf-secondary vf-wide-secondary" id="vfNewLogoImageTask" type="button">
+            ＋ 新增 Logo 重绘任务（不覆盖）
           </button>
         </section>
 
@@ -219,6 +310,10 @@
               <span>货号（可选）</span>
               <input id="vfSkuPattern" placeholder="例如 SKU-PATTERN-001">
             </label>
+            <label class="vf-field">
+              <span>商品类目</span>
+              <select id="vfPatternCategory"></select>
+            </label>
             <label class="vf-compact-upload">
               <input id="vfPatternFolder" type="file" accept="image/*" webkitdirectory directory multiple>
               <span>
@@ -239,11 +334,15 @@
               <span>Muse 请求方式</span>
               <select id="vfPatternRequestMode">
                 <option value="stable" selected>逐张稳定模式（每张 1 次请求）</option>
-                <option value="batch4">4 张 Agent 批量模式（需解压 ZIP）</option>
+                <option value="batch">多图 Agent 批量模式（需解压 ZIP）</option>
               </select>
             </label>
+            <label class="vf-field">
+              <span>每批参考图 / 返回张数</span>
+              <input id="vfPatternBatchSize" type="number" min="1" max="4" step="1" value="4" inputmode="numeric">
+            </label>
             <p class="vf-command-tip">
-              批量模式每批最多 4 张；只接受 4 张独立图片，数量不足或疑似拼图会自动判失败。
+              批量模式每次可要求 1-4 张独立图片；数量不符或请求失败时，自动降级为逐张发送。
             </p>
             <div class="vf-progress-note" id="vfPatternProgress" hidden></div>
             <button class="vf-primary" id="vfRunPattern" type="button">
@@ -258,32 +357,140 @@
             <button class="vf-retry" id="vfRetryPatternFailed" type="button" disabled>
               重试失败参考图
             </button>
+            <button class="vf-secondary vf-wide-secondary" id="vfSavePatternTask" type="button">
+              保存印花套图任务
+            </button>
             <p class="vf-command-tip">
-              ZIP 用于批次归档；Muse 生图时仍逐张读取参考图，避免压缩包内容无法被视觉模型识别。
+              参考图无论多少都会全部进入自动分批；超过 200 张也不会截断。
             </p>
           </div>
 
           <div class="vf-generate-pane" data-generate-pane="text">
+            <div class="vf-panel-intro">
+              <span>一张主图 · 文案裂变</span>
+              <p>每张都会更换商品印花，并让背景与该张印花的风格一致；同时保留版型、绒毛、褶皱和商品细节。</p>
+            </div>
+            <label class="vf-compact-upload">
+              <input id="vfGenerateMain" type="file" accept="image/*">
+              <span>
+                <strong>商品主图</strong>
+                <small id="vfGenerateMainName">选择一张需要裂变的商品主图</small>
+              </span>
+              <em>选择</em>
+            </label>
+            <div class="vf-main-preview" id="vfGeneratePreview" hidden>
+              <img id="vfGeneratePreviewImage" alt="文案生图商品主图">
+              <span>
+                <strong>文案生图主图</strong>
+                <small id="vfGeneratePreviewName"></small>
+              </span>
+            </div>
+            <label class="vf-field">
+              <span>生成引擎</span>
+              <select id="vfGenerateEngine">
+                <option value="muse" selected>Muse 页面图生图（推荐）</option>
+                <option value="model">已配置的图片模型</option>
+              </select>
+            </label>
+            <label class="vf-field">
+              <span>任务链模式</span>
+              <select id="vfGenerateChainMode">
+                <option value="original" selected>每一版都使用原主图（推荐）</option>
+                <option value="previous">上一版结果作为下一版主图（可能累积变形）</option>
+              </select>
+            </label>
+            <p class="vf-command-tip">
+              原主图链更稳定，适合只换裤子印花和底布颜色；连续链式可能累积版型、结构和印花变化。
+            </p>
+            <label class="vf-field">
+              <span>背景处理</span>
+              <select id="vfGenerateBackground">
+                <option value="match" selected>随印花改变背景（推荐）</option>
+                <option value="keep">保持原主图背景</option>
+              </select>
+            </label>
+            <p class="vf-command-tip">
+              选择“随印花改变背景”时，背景必须实际改变为与印花一致的场景、纹理、色彩和光影，不能只做轻微调色。
+            </p>
             <label class="vf-field">
               <span>货号（可选）</span>
               <input id="vfSkuGenerate" placeholder="输入本次任务货号">
             </label>
             <label class="vf-field">
-              <span>产品描述</span>
+              <span>商品类目</span>
+              <select id="vfCopyCategory"></select>
+            </label>
+            <label class="vf-field">
+              <span>视觉风格包</span>
+              <select id="vfStylePack">
+                <option value="all" selected>全部风格混合（推荐 · 每次随机顺序）</option>
+                <option value="auto">智能导演（优先听从提示词）</option>
+                <option value="yabi_moto">亚比机车（Y2K / 赛车 / 朋克 / 机能）</option>
+                <option value="street">街头潮流（涂鸦 / 滑板 / 嘻哈）</option>
+                <option value="dark_tech">暗黑机能（装甲 / 警示 / 赛博）</option>
+                <option value="balanced">综合商业视觉</option>
+              </select>
+            </label>
+            <p class="vf-command-tip">
+              工厂印花约束：商品本体只使用哑光平涂、矢量或网点印花，不生成高光、浮凸、立体装饰或特殊工艺效果。
+            </p>
+            <label class="vf-field">
+              <span>本次裂变描述（可选）</span>
               <textarea
                 id="vfPrompt"
                 rows="5"
-                placeholder="极简白色陶瓷咖啡杯，哑光釉面，保持外观和比例一致"
+                placeholder="可选：例如更强烈的橙灰迷彩、低饱和几何图形；留空时只执行默认换印花、随机底布和风格背景"
               ></textarea>
             </label>
+            <label class="vf-switch vf-direct-prompt">
+              <input id="vfDirectPrompt" type="checkbox">
+              <span>直接发送用户提示词，不套用模板</span>
+            </label>
+            <details class="vf-template-editor" id="vfTemplateEditor">
+              <summary>
+                <span>提示词模板</span>
+                <small id="vfTemplateState">内置默认模板</small>
+              </summary>
+              <p>
+                可直接修改完整模板。支持
+                <code>{{instruction}}</code>、<code>{{index}}</code>、
+                <code>{{total}}</code>、<code>{{direction}}</code>、
+                <code>{{visual_instruction}}</code>。
+              </p>
+              <textarea id="vfPromptTemplate" rows="10" spellcheck="false"></textarea>
+              <div class="vf-template-actions">
+                <button id="vfResetPromptTemplate" type="button">恢复内置默认</button>
+                <button id="vfSavePromptTemplate" type="button">保存为默认模板</button>
+              </div>
+            </details>
+            <section class="vf-memory-panel">
+              <div class="vf-memory-head">
+                <span>
+                  <strong>提示词记忆</strong>
+                  <small>自动记录本次主图、提示词和任务配置</small>
+                </span>
+                <label class="vf-switch">
+                  <input id="vfRememberPrompt" type="checkbox" checked>
+                  <span>记忆</span>
+                </label>
+              </div>
+              <div id="vfPromptMemoryList" class="vf-memory-list"></div>
+              <p id="vfPromptMemoryEmpty" class="vf-memory-empty">
+                运行或保存产品裂变任务后，会在这里出现最近记忆。
+              </p>
+            </section>
             <div class="vf-grid">
               <label class="vf-field">
-                <span>数量</span>
+                <span>请求次数</span>
+                <input id="vfRequestCount" type="number" min="1" step="1" value="1" inputmode="numeric">
+              </label>
+              <label class="vf-field">
+                <span>单次返回张数</span>
                 <select id="vfCount">
+                  <option value="1">1 张</option>
                   <option value="2">2 张</option>
+                  <option value="3">3 张</option>
                   <option value="4" selected>4 张</option>
-                  <option value="6">6 张</option>
-                  <option value="8">8 张</option>
                 </select>
               </label>
               <label class="vf-field">
@@ -295,10 +502,150 @@
                 </select>
               </label>
             </div>
+            <p class="vf-command-tip" id="vfRequestSummary">
+              当前：1 次对话 × 每次返回 4 张 = 共 4 张。
+            </p>
+            <p class="vf-command-tip">
+              一次配置只创建一条产品裂变任务。内部可按顺序调用 Muse 多次，最终统一归档到同一个任务目录。
+            </p>
+            <div class="vf-progress-note" id="vfGenerateProgress" hidden></div>
             <button class="vf-primary" data-run="generate" type="button">
-              <span>生成产品视觉</span>
+              <span>运行产品裂变任务</span>
+            </button>
+            <button class="vf-retry" id="vfRetryFailedGenerate" type="button" disabled>
+              重试失败文案图
+            </button>
+            <button class="vf-secondary vf-wide-secondary" id="vfSaveCopyTasks" type="button">
+              保存当前产品裂变任务
             </button>
           </div>
+        </section>
+
+        <section class="vf-panel" data-panel="video">
+          <div class="vf-panel-intro">
+            <span>产品主图 · Muse 视频生成</span>
+            <p>上传一张商品主图，生成环绕、细节或模特上身展示视频。真人上身时脸部不会进入画面。</p>
+          </div>
+          <label class="vf-compact-upload">
+            <input id="vfVideoMain" type="file" accept="image/*">
+            <span>
+              <strong>商品主图</strong>
+              <small id="vfVideoMainName">选择一张需要制作展示视频的商品图</small>
+            </span>
+            <em>选择</em>
+          </label>
+          <div class="vf-main-preview" id="vfVideoPreview" hidden>
+            <img id="vfVideoPreviewImage" alt="产品视频商品主图">
+            <span>
+              <strong>产品视频输入主图</strong>
+              <small id="vfVideoPreviewName"></small>
+            </span>
+          </div>
+          <label class="vf-field">
+            <span>展示方式</span>
+            <select id="vfVideoPresentation">
+              <option value="product" selected>商品独立展示（不出现真人）</option>
+              <option value="worn_no_face">模特上身 · 严格不露脸</option>
+              <option value="mixed">产品细节 + 模特上身 · 不露脸</option>
+            </select>
+          </label>
+          <label class="vf-field">
+            <span>商品类目</span>
+            <select id="vfVideoCategory"></select>
+          </label>
+          <div class="vf-grid">
+            <label class="vf-field">
+              <span>视频时长</span>
+              <select id="vfVideoDuration">
+                <option value="5">约 5 秒</option>
+                <option value="8" selected>约 8 秒</option>
+                <option value="10">约 10 秒</option>
+              </select>
+            </label>
+            <label class="vf-field">
+              <span>画面比例</span>
+              <select id="vfVideoAspect">
+                <option value="9:16" selected>9 : 16 竖屏</option>
+                <option value="1:1">1 : 1 方形</option>
+                <option value="16:9">16 : 9 横屏</option>
+              </select>
+            </label>
+            <label class="vf-field">
+              <span>请求次数</span>
+              <input id="vfVideoRequestCount" type="number" min="1" step="1" value="1" inputmode="numeric">
+            </label>
+          </div>
+          <label class="vf-field">
+            <span>货号（可选）</span>
+            <input id="vfSkuVideo" placeholder="输入本次视频任务货号">
+          </label>
+          <label class="vf-field">
+            <span>补充描述（可选）</span>
+            <textarea
+              id="vfVideoPrompt"
+              rows="5"
+              placeholder="例如：街头棚拍、镜头缓慢环绕、重点展示商品印花和面料褶皱"
+            ></textarea>
+          </label>
+          <p class="vf-command-tip">
+            硬约束：只要出现真人模特，只允许颈部以下入镜；正脸、侧脸、完整头部和脸部特写均禁止。
+          </p>
+          <p class="vf-command-tip">
+            每次请求生成一个视频。请求次数可自定义；每个视频返回后立即预览和下载，全部请求结束后统一归档为一条任务。
+          </p>
+          <div class="vf-progress-note" id="vfVideoProgress" hidden></div>
+          <button class="vf-primary" id="vfRunVideo" type="button">
+            <span>运行产品视频任务</span>
+          </button>
+          <button class="vf-retry" id="vfRetryFailedVideo" type="button" disabled>
+            重试失败视频请求
+          </button>
+          <button class="vf-secondary vf-wide-secondary" id="vfSaveVideoTask" type="button">
+            保存当前产品视频任务
+          </button>
+        </section>
+
+        <section class="vf-panel" data-panel="tasks">
+          <div class="vf-panel-intro">
+            <span>全部模式任务列表</span>
+            <p>商品配色、Logo 多色、Logo 重绘、印花套图、产品裂变和产品视频都可保存到这里，并按顺序一键排队。</p>
+          </div>
+          <div class="vf-task-toolbar">
+            <button class="vf-secondary" id="vfAddCopyTask" type="button">＋ 复制最近任务</button>
+            <button class="vf-secondary" id="vfLoadLastCopyTask" type="button">加载上一条配置</button>
+            <button class="vf-secondary" id="vfDetachCurrentTask" type="button">另存为新任务（不覆盖）</button>
+            <button class="vf-secondary" id="vfQueueCopyTasks" type="button" disabled>一键排队全部任务</button>
+          </div>
+          <div class="vf-queue-controls">
+            <button class="vf-secondary" id="vfQueuePause" type="button" disabled>暂停队列</button>
+            <button class="vf-secondary" id="vfRetryFailedQueue" type="button" disabled>重试失败任务</button>
+            <span id="vfQueueSummary">尚未运行任务队列</span>
+          </div>
+          <div class="vf-copy-task-list" id="vfCopyTaskList"></div>
+          <div class="vf-empty" id="vfCopyTaskEmpty">还没有任务，请先在任意模式中保存配置。</div>
+        </section>
+
+        <section class="vf-panel" data-panel="prompts">
+          <div class="vf-panel-intro">
+            <span>所有 Muse 提示词的默认模板</span>
+            <p>模板只影响对应生产功能。Logo 多色、商品精确校色和归档属于扩展本地处理，没有 Muse 提示词。</p>
+          </div>
+          <div class="vf-prompt-catalog" id="vfPromptCatalog"></div>
+          <div class="vf-template-actions">
+            <button id="vfResetAllPromptTemplates" type="button">全部恢复默认</button>
+            <button id="vfSaveAllPromptTemplates" type="button">保存全部模板</button>
+          </div>
+          <p class="vf-command-tip" id="vfPromptCatalogStatus">
+            模板可使用双花括号变量；不写变量时也可以直接作为固定 Prompt 使用。
+          </p>
+        </section>
+
+        <section class="vf-muse-returned" id="vfMuseReturnedSection" hidden>
+          <div class="vf-section-head">
+            <strong>Muse 最近返回</strong>
+            <span id="vfMuseReturnedMeta"></span>
+          </div>
+          <div class="vf-muse-returned-grid" id="vfMuseReturnedGrid"></div>
         </section>
 
         <section class="vf-history">
@@ -333,12 +680,14 @@
     </div>
     <div class="vf-toast" id="vfToast" role="status"></div>
     <script src="command-parser.js"></script>
+    <script src="prompt-templates.js"></script>
     <script src="zip-builder.js"></script>
     <script src="local-core.js"></script>
     <script src="local-store.js"></script>
     <script src="local-model.js"></script>
     <script src="local-archive.js"></script>
     <script src="local-jobs.js"></script>
+    <script src="muse-response.js"></script>
     <script src="sidepanel.js"></script>
   </body>
 </html>

@@ -19,8 +19,11 @@ import {
 import {
   ComparisonPolicy,
   Decision,
+  PriceCurrency,
   buildSubmissionPlan,
+  convertCurrencyCentsToRmbCents,
   convertPlatformPriceToRmbCents,
+  convertRmbCentsToCurrencyCents,
   createIdempotencyKey,
   decidePrice,
   toCents,
@@ -182,6 +185,36 @@ test("convertPlatformPriceToRmbCents handles RMB and foreign currency", () => {
     /汇率必须大于 0/,
   );
   assert.throws(() => convertPlatformPriceToRmbCents("8.50", "", 7.2), /缺少币种/);
+});
+
+test("RMB prices convert to USD display and back without changing the comparison basis", () => {
+  const rmbCents = 9950;
+  const rate = 7.2;
+  const usdCents = convertRmbCentsToCurrencyCents(
+    rmbCents,
+    PriceCurrency.USD,
+    rate,
+  );
+  assert.equal(usdCents, 1382);
+  assert.equal(
+    convertCurrencyCentsToRmbCents(usdCents, PriceCurrency.USD, rate),
+    9950,
+  );
+  assert.equal(
+    convertRmbCentsToCurrencyCents(rmbCents, PriceCurrency.RMB, null),
+    rmbCents,
+  );
+});
+
+test("USD conversion rejects missing or invalid exchange rates", () => {
+  assert.throws(
+    () => convertRmbCentsToCurrencyCents(1000, PriceCurrency.USD, 0),
+    /汇率必须大于 0/,
+  );
+  assert.throws(
+    () => convertCurrencyCentsToRmbCents(1000, PriceCurrency.USD, ""),
+    /汇率必须大于 0/,
+  );
 });
 
 test("platform price at or above the merchant target is accepted directly", () => {

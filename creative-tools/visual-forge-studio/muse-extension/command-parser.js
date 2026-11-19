@@ -12,7 +12,7 @@
   const HELP =
     "用法：/vf product-colors #1D2A44,#8C1A2D｜" +
     "/vf colors #111111,#FFFFFF｜/vf color #D4684F｜" +
-    "/vf generate 产品描述 --count 4";
+    "/vf generate 文案或场景描述 --count 4（需先选择商品主图）";
 
   function splitColors(raw) {
     return raw
@@ -84,7 +84,7 @@
         return { error: `颜色格式无效：${colors[0]}` };
       }
       return {
-        kind: "logo_color_batch",
+        kind: "logo_image_recolor",
         options: {
           color: colors[0],
           remove_background: "auto",
@@ -101,7 +101,7 @@
       const skuFlag = extractFlag(qualityFlag.text, "sku");
       const prompt = skuFlag.text.trim();
       if (!prompt) {
-        return { error: "请在 /vf generate 后输入产品描述" };
+        return { error: "请在 /vf generate 后输入文案或场景描述" };
       }
       const count = countFlag.value ? Number(countFlag.value) : 4;
       if (!Number.isInteger(count) || count < 1 || count > 12) {

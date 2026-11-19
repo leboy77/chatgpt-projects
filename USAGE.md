@@ -9,7 +9,8 @@
 | Temu Market Lab 网页分析台 | 浏览器网页 | 专项仓库 `temu-sop-agent-toolkit/webapp/start.ps1` |
 | Visual Forge 后端 | 浏览器网页 | `creative-tools/visual-forge-studio/backend/` |
 | Visual Forge Muse 扩展 | 浏览器扩展 | `creative-tools/visual-forge-studio/muse-extension/` |
-| 批量流量加速 Demo | 浏览器扩展或 HTML 预览 | `browser-tools/batch-traffic-accelerator/` |
+| Visual Forge 团队看板 | 浏览器网页 | `creative-tools/visual-forge-studio/dashboard/` |
+| 指定规格流量加速 | 浏览器扩展 | `browser-tools/batch-traffic-accelerator/` |
 | 全球价格申报核价助手 | 浏览器扩展 | `temu-operations/price-checker/dist/extension/` |
 | 商品自动复色助手 | 浏览器扩展 | `temu-operations/auto-recolor/extension/` |
 | Temu 下架助手 | 浏览器扩展 | `temu-operations/downlist-assistant/temu-downlist-extension/` |
@@ -105,7 +106,16 @@ creative-tools\visual-forge-studio\muse-extension
 
 建议第一次先用演示模式，确认任务、图片数量、ZIP 和归档目录都正常，再配置真实模型。
 
-## 四、批量流量加速 Demo
+### 3.3 团队看板
+
+```powershell
+cd creative-tools\visual-forge-studio\dashboard
+python server.py --host 127.0.0.1 --port 8766
+```
+
+打开 `http://127.0.0.1:8766/`，用于汇总插件任务、图片、项目、用户和统计信息。
+
+## 四、指定规格流量加速
 
 项目目录：
 
@@ -113,22 +123,17 @@ creative-tools\visual-forge-studio\muse-extension
 browser-tools\batch-traffic-accelerator
 ```
 
-快速预览：
-
-```powershell
-Start-Process .\demo\preview.html
-```
-
 作为扩展使用：
 
 1. 加载上述项目根目录，根目录内包含 `manifest.json`。
-2. 点击浏览器工具栏中的“批量流量加速 Demo”。
-3. 在侧边栏中设置筛选条件、目标让价和单批商品数。
-4. 点击“预演”，检查命中数、排除原因和毛利影响。
-5. 点击“开始执行”，查看成功、失败和待确认记录。
-6. 完成后导出 CSV。
+2. 打开 Temu 商品列表或流量分析页面，点击扩展图标。
+3. 绑定当前店铺，选择 SKU 模糊查询、单类目检索或表格导入商品 ID。
+4. 导入站点价格表并生成任务预检。
+5. 检查商品池、站点、目标规格价格和资格，再加入持久化队列。
+6. 开始队列后查看成功、配置异常、可重试失败和日志。
 
-当前版本只执行模拟流程，不会修改 Temu 真实商品价格，也不会调用内部提交接口。
+当前版本 `v0.6.17` 会连接真实 Temu 页面并提交符合条件的流量加速任务。
+正式执行前应确认店铺、站点、价格和加速时效；“仅检查，不提交”默认关闭。
 
 ## 五、Temu 运营扩展
 

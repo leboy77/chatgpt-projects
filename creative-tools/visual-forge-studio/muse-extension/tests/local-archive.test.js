@@ -60,9 +60,14 @@ class FakeDirectory {
 }
 
 async function loadArchive(rootHandle) {
+  let savedHandle = rootHandle;
   globalThis.VisualForgeStore = {
     async getSetting() {
-      return rootHandle;
+      return savedHandle;
+    },
+    async setSetting(_key, value) {
+      savedHandle = value;
+      return value;
     },
   };
   globalThis.showDirectoryPicker = async () => rootHandle;
@@ -100,6 +105,86 @@ test("archives ordinary tasks with image, manifest and README", async () => {
   assert.ok([...folder.files.keys()].some((name) => /_01_logo\.png$/.test(name)));
   assert.ok(folder.files.has("manifest.json"));
   assert.ok(folder.files.has("README.txt"));
+});
+
+test("archives product videos with their video extension", async () => {
+  const root = new FakeDirectory("VisualForge商品图");
+  const archive = await loadArchive(root);
+  const result = await archive.archiveJob(
+    {
+      id: "video123",
+      kind: "product_video_generate",
+      created_at: "2026-11-18T08:00:00.000Z",
+      options: { sku: "VIDEO-1001" },
+    },
+    [
+      {
+        name: "source.png",
+        type: "image/png",
+        variant_type: "source",
+        blob: new Blob(["source"], { type: "image/png" }),
+      },
+      {
+        name: "product-video-01.mp4",
+        type: "video/mp4",
+        variant_type: "product_video",
+        blob: new Blob(["video"], { type: "video/mp4" }),
+      },
+      {
+        name: "manifest.json",
+        type: "application/json",
+        variant_type: "manifest",
+        blob: new Blob(["{}"], { type: "application/json" }),
+      },
+    ],
+  );
+  assert.match(result.groupName, /^产品视频_VIDEO-1001_/);
+  const folder = root.directories.get(result.groupName);
+  assert.ok(folder.files.has("product-video-01.mp4"));
+  assert.ok(folder.files.has("manifest.json"));
+  assert.ok(folder.files.has("README.txt"));
+});
+
+test("links-only export writes Muse URLs without image files", async () => {
+  const root = new FakeDirectory("VisualForge商品图");
+  const archive = await loadArchive(root);
+  const result = await archive.archiveJob(
+    {
+      id: "links123",
+      kind: "product_color_finalize",
+      created_at: "2026-11-09T08:00:00.000Z",
+      options: { sku: "L1001", export_mode: "links_only" },
+    },
+    [
+      {
+        name: "source.png",
+        type: "image/png",
+        variant_type: "source",
+        blob: new Blob(["source"], { type: "image/png" }),
+      },
+      {
+        name: "muse-raw.png",
+        type: "image/png",
+        variant_type: "muse_raw",
+        muse_url: "https://example.com/muse/generated-1.png",
+        blob: new Blob(["generated"], { type: "image/png" }),
+      },
+      {
+        name: "manifest.json",
+        type: "application/json",
+        variant_type: "manifest",
+        blob: new Blob(["{}"], { type: "application/json" }),
+      },
+    ],
+  );
+  const folder = root.directories.get(result.groupName);
+  assert.ok(folder.files.has("图片链接.txt"));
+  assert.ok(folder.files.has("图片链接.json"));
+  assert.ok(folder.files.has("README.txt"));
+  assert.equal(
+    [...folder.files.keys()].some((name) => /\.(png|webp|jpe?g)$/i.test(name)),
+    false,
+  );
 });
 
 test("shares one pattern task root and separates outputs from summaries", async () => {
@@ -170,4 +255,62 @@ test("reserves unique top-level pattern groups for repeated starts", async () =>
   assert.equal(await archive.reserveGroup(stem), `${stem}_2`);
   assert.ok(root.directories.has(stem));
   assert.ok(root.directories.has(`${stem}_2`));
+});
+
+test("re-authorizes an existing directory without opening the picker", async () => {
+  const root = new FakeDirectory("VisualForge商品图", "prompt");
+  let pickerCalls = 0;
+  const archive = await loadArchive(root);
+  globalThis.showDirectoryPicker = async () => {
+    pickerCalls += 1;
+    return root;
+  };
+  root.requestPermission = async () => "granted";
+  const handle = await archive.chooseDirectory();
+  assert.equal(handle, root);
+  assert.equal(pickerCalls, 0);
+});
+
+test("reauthorization requests permission synchronously from a prepared handle", async () => {
+  const root = new FakeDirectory("VisualForge商品图", "prompt");
+  const archive = await loadArchive(root);
+  let requestedSynchronously = false;
+  root.requestPermission = async () => {
+    requestedSynchronously = true;
+    return "granted";
+  };
+  const pending = archive.reauthorizeSavedDirectory({
+    handle: root,
+    permission: "prompt",
+  });
+  assert.equal(requestedSynchronously, true);
+  assert.equal(await pending, root);
+});
+
+test("choosing a new directory always opens the picker", async () => {
+  const saved = new FakeDirectory("旧目录");
+  const selected = new FakeDirectory("新目录");
+  let pickerCalls = 0;
+  const archive = await loadArchive(saved);
+  globalThis.showDirectoryPicker = async () => {
+    pickerCalls += 1;
+    return selected;
+  };
+  const handle = await archive.chooseNewDirectory();
+  assert.equal(handle, selected);
+  assert.equal(pickerCalls, 1);
+  assert.equal(await globalThis.VisualForgeStore.getSetting("archiveDirectory"), selected);
+});
+
+test("uses Shanghai time for task directory names", async () => {
+  const root = new FakeDirectory("VisualForge商品图");
+  const archive = await loadArchive(root);
+  assert.equal(
+    archive.buildStem(
+      "pattern_batch_finalize",
+      { sku: "W1001" },
+      "2026-11-03T06:09:36.000Z",
+    ),
+    "印花套图_W1001_2026-11-03_14-09-36",
+  );
 });

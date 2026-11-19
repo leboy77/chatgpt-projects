@@ -5,7 +5,9 @@
   window.__VF_MUSE_BRIDGE_LOADED__ = true;
 
   const parser = window.MuseBridgeCommands;
-  if (!parser) {
+  const promptTemplates = window.VisualForgePromptTemplates;
+  const museResponse = window.VisualForgeMuseResponse;
+  if (!parser || !museResponse) {
     console.error("Visual Forge command parser failed to load");
     return;
   }
@@ -16,7 +18,21 @@
   let widgetLauncher = null;
   let widgetReady = false;
   let pendingWidgetCommand = "";
+  let autoContinuePreference = false;
+  let autoContinueTimeoutEnabled = false;
+  let autoRegenerateTextOnly = false;
+  let autoContinueWatcher = null;
+  let generatedImageObserver = null;
+  const trackedGeneratedImages = [];
+  const trackedGeneratedVideos = [];
+  const trackedGeneratedVideoLinks = [];
+  const TRACKED_GENERATED_IMAGE_LIMIT = 500;
+  const TRACKED_GENERATED_VIDEO_LIMIT = 100;
   const widgetPositionKey = "visualForgeWidgetPosition";
+  const widgetSizeKey = "visualForgeWidgetSize";
+  const WIDGET_MIN_WIDTH = 340;
+  const WIDGET_MIN_HEIGHT = 420;
+  const WIDGET_EDGE_GAP = 8;
 
   function installWidget() {
     if (document.querySelector("#vf-widget-root")) return;
@@ -37,17 +53,63 @@
         box-shadow: 0 24px 70px rgba(16, 24, 40, .2);
       }
       #vf-widget-shell[hidden] { display: none !important; }
+      #vf-widget-shell[data-resizing="true"] iframe { pointer-events: none; }
+      #vf-widget-shell::after {
+        content: "";
+        position: absolute;
+        right: 4px;
+        bottom: 4px;
+        width: 12px;
+        height: 12px;
+        z-index: 6;
+        pointer-events: none;
+        border-right: 2px solid rgba(8, 102, 255, .42);
+        border-bottom: 2px solid rgba(8, 102, 255, .42);
+        border-radius: 0 0 4px 0;
+      }
       #vf-widget-drag-handle {
         position: absolute;
         top: 0;
         left: 0;
         width: calc(100% - 118px);
         height: 64px;
-        z-index: 2;
-        cursor: grab;
+        z-index: 1;
+        pointer-events: none;
+      }
+      .vf-widget-resize {
+        position: absolute;
+        z-index: 5;
         touch-action: none;
       }
-      #vf-widget-drag-handle:active { cursor: grabbing; }
+      .vf-widget-resize[data-direction="n"],
+      .vf-widget-resize[data-direction="s"] {
+        left: 14px;
+        right: 14px;
+        height: 8px;
+        cursor: ns-resize;
+      }
+      .vf-widget-resize[data-direction="n"] { top: -3px; }
+      .vf-widget-resize[data-direction="s"] { bottom: -3px; }
+      .vf-widget-resize[data-direction="e"],
+      .vf-widget-resize[data-direction="w"] {
+        top: 14px;
+        bottom: 14px;
+        width: 8px;
+        cursor: ew-resize;
+      }
+      .vf-widget-resize[data-direction="e"] { right: -3px; }
+      .vf-widget-resize[data-direction="w"] { left: -3px; }
+      .vf-widget-resize[data-direction="ne"],
+      .vf-widget-resize[data-direction="nw"],
+      .vf-widget-resize[data-direction="se"],
+      .vf-widget-resize[data-direction="sw"] {
+        width: 18px;
+        height: 18px;
+      }
+      .vf-widget-resize[data-direction="ne"] { top: -4px; right: -4px; cursor: nesw-resize; }
+      .vf-widget-resize[data-direction="nw"] { top: -4px; left: -4px; cursor: nwse-resize; }
+      .vf-widget-resize[data-direction="se"] { bottom: -4px; right: -4px; cursor: nwse-resize; }
+      .vf-widget-resize[data-direction="sw"] { bottom: -4px; left: -4px; cursor: nesw-resize; }
       #vf-widget-frame { width: 100%; height: 100%; display: block; border: 0; background: #fff; }
       #vf-widget-launcher {
         position: fixed;
@@ -85,6 +147,14 @@
     root.innerHTML = `
       <div id="vf-widget-shell" hidden>
         <div id="vf-widget-drag-handle" title="拖动 Visual Forge"></div>
+        <div class="vf-widget-resize" data-direction="n" aria-hidden="true"></div>
+        <div class="vf-widget-resize" data-direction="e" aria-hidden="true"></div>
+        <div class="vf-widget-resize" data-direction="s" aria-hidden="true"></div>
+        <div class="vf-widget-resize" data-direction="w" aria-hidden="true"></div>
+        <div class="vf-widget-resize" data-direction="ne" aria-hidden="true"></div>
+        <div class="vf-widget-resize" data-direction="nw" aria-hidden="true"></div>
+        <div class="vf-widget-resize" data-direction="se" aria-hidden="true"></div>
+        <div class="vf-widget-resize" data-direction="sw" aria-hidden="true"></div>
         <iframe
           id="vf-widget-frame"
           title="Visual Forge 商品视觉工具"
@@ -99,6 +169,19 @@
     widgetFrame = root.querySelector("#vf-widget-frame");
     const dragHandle = root.querySelector("#vf-widget-drag-handle");
 
+    const savedSize = readWidgetSize();
+    if (savedSize) {
+      applyWidgetRect({
+        left: Number.isFinite(savedSize.left)
+          ? savedSize.left
+          : window.innerWidth - savedSize.width - 18,
+        top: Number.isFinite(savedSize.top)
+          ? savedSize.top
+          : window.innerHeight - savedSize.height - 18,
+        width: savedSize.width,
+        height: savedSize.height,
+      });
+    }
     const saved = readWidgetPosition();
     if (saved) applyWidgetPosition(saved.left, saved.top);
     widgetLauncher.addEventListener("click", toggleWidget);
@@ -147,6 +230,69 @@
     };
     dragHandle.addEventListener("pointerup", finishPointerDrag);
     dragHandle.addEventListener("pointercancel", finishPointerDrag);
+
+    root.querySelectorAll(".vf-widget-resize").forEach((handle) => {
+      let pointerResize = null;
+      handle.addEventListener("pointerdown", (event) => {
+        const rect = widgetShell.getBoundingClientRect();
+        pointerResize = {
+          pointerId: event.pointerId,
+          startX: event.clientX,
+          startY: event.clientY,
+          left: rect.left,
+          top: rect.top,
+          width: rect.width,
+          height: rect.height,
+          direction: handle.dataset.direction || "se",
+        };
+        widgetShell.dataset.resizing = "true";
+        try {
+          handle.setPointerCapture(event.pointerId);
+        } catch {
+          // Synthetic test events may not own an active pointer.
+        }
+        event.preventDefault();
+        event.stopPropagation();
+      });
+      handle.addEventListener("pointermove", (event) => {
+        if (!pointerResize) return;
+        applyWidgetRect(
+          resizedWidgetRect(
+            pointerResize,
+            event.clientX - pointerResize.startX,
+            event.clientY - pointerResize.startY,
+          ),
+        );
+      });
+      const finishResize = (event) => {
+        if (!pointerResize) return;
+        pointerResize = null;
+        delete widgetShell.dataset.resizing;
+        try {
+          if (handle.hasPointerCapture(event.pointerId)) {
+            handle.releasePointerCapture(event.pointerId);
+          }
+        } catch {
+          // Capture is best-effort.
+        }
+        const rect = widgetShell.getBoundingClientRect();
+        try {
+          localStorage.setItem(
+            widgetSizeKey,
+            JSON.stringify({
+              left: rect.left,
+              top: rect.top,
+              width: rect.width,
+              height: rect.height,
+            }),
+          );
+        } catch {
+          // Size persistence is optional.
+        }
+      };
+      handle.addEventListener("pointerup", finishResize);
+      handle.addEventListener("pointercancel", finishResize);
+    });
   }
 
   function readWidgetPosition() {
@@ -160,6 +306,87 @@
     } catch {
       return null;
     }
+  }
+
+  function readWidgetSize() {
+    try {
+      const value = JSON.parse(
+        localStorage.getItem(widgetSizeKey) || "null",
+      );
+      return Number.isFinite(value?.width) && Number.isFinite(value?.height)
+        ? value
+        : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function resizedWidgetRect(start, dx, dy) {
+    let left = start.left;
+    let top = start.top;
+    let width = start.width;
+    let height = start.height;
+    const direction = start.direction;
+    const maximumWidth = Math.max(WIDGET_MIN_WIDTH, window.innerWidth - 16);
+    const maximumHeight = Math.max(WIDGET_MIN_HEIGHT, window.innerHeight - 16);
+    if (direction.includes("e")) {
+      width = Math.max(
+        WIDGET_MIN_WIDTH,
+        Math.min(start.width + dx, window.innerWidth - start.left - WIDGET_EDGE_GAP),
+      );
+    }
+    if (direction.includes("w")) {
+      left = Math.max(
+        WIDGET_EDGE_GAP,
+        Math.min(start.left + dx, start.left + start.width - WIDGET_MIN_WIDTH),
+      );
+      width = start.width + (start.left - left);
+    }
+    if (direction.includes("s")) {
+      height = Math.max(
+        WIDGET_MIN_HEIGHT,
+        Math.min(start.height + dy, window.innerHeight - start.top - WIDGET_EDGE_GAP),
+      );
+    }
+    if (direction.includes("n")) {
+      top = Math.max(
+        WIDGET_EDGE_GAP,
+        Math.min(start.top + dy, start.top + start.height - WIDGET_MIN_HEIGHT),
+      );
+      height = start.height + (start.top - top);
+    }
+    return {
+      left,
+      top,
+      width: Math.min(width, maximumWidth),
+      height: Math.min(height, maximumHeight),
+    };
+  }
+
+  function applyWidgetRect(rect) {
+    if (!widgetShell) return;
+    const width = Math.max(
+      WIDGET_MIN_WIDTH,
+      Math.min(Number(rect.width) || 420, window.innerWidth - 16),
+    );
+    const height = Math.max(
+      WIDGET_MIN_HEIGHT,
+      Math.min(Number(rect.height) || 760, window.innerHeight - 16),
+    );
+    const left = Math.max(
+      WIDGET_EDGE_GAP,
+      Math.min(Number(rect.left) || 0, window.innerWidth - width - WIDGET_EDGE_GAP),
+    );
+    const top = Math.max(
+      WIDGET_EDGE_GAP,
+      Math.min(Number(rect.top) || 0, window.innerHeight - height - WIDGET_EDGE_GAP),
+    );
+    widgetShell.style.left = `${left}px`;
+    widgetShell.style.top = `${top}px`;
+    widgetShell.style.width = `${width}px`;
+    widgetShell.style.height = `${height}px`;
+    widgetShell.style.right = "auto";
+    widgetShell.style.bottom = "auto";
   }
 
   function applyWidgetPosition(left, top) {
@@ -314,6 +541,12 @@
       rect.width > 20 &&
       rect.height > 10
     );
+  }
+
+  function isDomDisplayed(element) {
+    if (!element?.isConnected) return false;
+    const style = window.getComputedStyle(element);
+    return style.display !== "none" && style.visibility !== "hidden";
   }
 
   function editableText(element) {
@@ -544,24 +777,459 @@
     );
   }
 
+  function isAutoContinueQuestion(text) {
+    if (museResponse.isGenerationBlocked(text)) return false;
+    return museResponse.isContinueQuestion(text);
+  }
+
+  function assistantResponseTextCounts() {
+    const counts = new Map();
+    const walker = document.createTreeWalker(
+      document.body,
+      NodeFilter.SHOW_TEXT,
+    );
+    let node = walker.nextNode();
+    while (node) {
+      const text = museResponse.normalizeText(node.nodeValue);
+      const parent = node.parentElement;
+      const style = parent ? window.getComputedStyle(parent) : null;
+      if (
+        text.length >= 2 &&
+        text.length <= 1200 &&
+        parent &&
+        style?.display !== "none" &&
+        style?.visibility !== "hidden" &&
+        !parent.closest(
+          "form, textarea, input, button, [contenteditable='true'], #vf-widget-root, " +
+            "[data-message-author-role='user'], [data-testid*='user' i]",
+        )
+      ) {
+        counts.set(text, (counts.get(text) || 0) + 1);
+      }
+      node = walker.nextNode();
+    }
+    return counts;
+  }
+
+  function assistantResponseBaseline() {
+    return assistantResponseTextCounts();
+  }
+
+  function newAssistantResponseTexts(baseline) {
+    if (!(baseline instanceof Map)) return [];
+    const current = assistantResponseTextCounts();
+    const added = [];
+    for (const [text, count] of current) {
+      const previous = baseline.get(text) || 0;
+      for (let index = previous; index < count; index += 1) {
+        added.push(text);
+      }
+    }
+    return added;
+  }
+
+  function blockedResponseText(baseline) {
+    return (
+      newAssistantResponseTexts(baseline).find((text) =>
+        museResponse.isGenerationBlocked(text),
+      ) || ""
+    );
+  }
+
+  async function sendRegenerateMessage() {
+    const composer = findMuseComposer();
+    if (!composer || editableText(composer).trim()) return null;
+    const baseline = assistantResponseBaseline();
+    replaceMuseComposerText("重新生成");
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    submitMuseComposer();
+    return baseline;
+  }
+
+  function substantiveNewResponseTexts(baseline) {
+    return newAssistantResponseTexts(baseline).filter(
+      (text) => !museResponse.isProgressText(text),
+    );
+  }
+
+  async function handleTextOnlyResponse(
+    state,
+    responseBaseline,
+    waitKind,
+  ) {
+    if (!autoRegenerateTextOnly) return responseBaseline;
+    const texts = substantiveNewResponseTexts(responseBaseline);
+    if (!texts.length) return responseBaseline;
+    if (
+      autoContinuePreference &&
+      texts.some((text) => museResponse.isContinueQuestion(text))
+    ) {
+      return responseBaseline;
+    }
+    const signature = texts.join("|");
+    if (signature !== state.signature) {
+      state.signature = signature;
+      state.since = Date.now();
+    }
+    const action = museResponse.textOnlyRetryAction(
+      state.retryUsed,
+      Date.now() - state.since,
+      museResponse.TEXT_ONLY_GRACE_MS,
+    );
+    if (action === "wait") {
+      return responseBaseline;
+    }
+    if (action === "retry") {
+      const nextBaseline = await sendRegenerateMessage();
+      if (!nextBaseline) {
+        throw new Error(
+          `${museResponse.TEXT_ONLY_ERROR_PREFIX}Muse 输入框已有草稿，无法自动回复“重新生成”`,
+        );
+      }
+      state.retryUsed = true;
+      state.signature = "";
+      state.since = 0;
+      showToast(`Muse ${waitKind}只返回文字，已自动回复“重新生成”`);
+      return nextBaseline;
+    }
+    throw new Error(
+      `${museResponse.TEXT_ONLY_ERROR_PREFIX}二次只返回文字且没有图片：` +
+        texts.at(-1).slice(0, 90),
+    );
+  }
+
+  function suspendAutoContinueForBlockedResponse() {
+    if (!autoContinueWatcher) return;
+    clearTimeout(autoContinueWatcher.idleTimer);
+    autoContinueWatcher.observer?.disconnect();
+    autoContinueWatcher.stopped = true;
+    autoContinueWatcher = null;
+  }
+
+  function newAutoContinueQuestionKeys(seen) {
+    const keys = [];
+    const walker = document.createTreeWalker(
+      document.body,
+      NodeFilter.SHOW_TEXT,
+    );
+    let node = walker.nextNode();
+    while (node) {
+      const text = String(node.nodeValue || "").replace(/\s+/g, " ").trim();
+      const parent = node.parentElement;
+      if (
+        isAutoContinueQuestion(text) &&
+        parent &&
+        isDomDisplayed(parent) &&
+        !parent.closest(
+          "form, textarea, input, [contenteditable='true'], #vf-widget-root, " +
+            "[data-message-author-role='user'], [data-testid*='user' i]",
+        )
+      ) {
+        const key = `${text}|${parent.getBoundingClientRect().top}|${parent.getBoundingClientRect().left}`;
+        if (!seen.has(key)) keys.push({ key, text, parent });
+      }
+      node = walker.nextNode();
+    }
+    return keys;
+  }
+
+  function answerContinueQuestion(container) {
+    const buttonSelectors = [
+      "button",
+      "[role='button']",
+    ].join(",");
+    const scope =
+      container.closest(
+        "[data-message-author-role='assistant'], [data-role='assistant'], article, li",
+      ) || container.parentElement;
+    const button = [...(scope?.querySelectorAll(buttonSelectors) || [])].find(
+      (candidate) =>
+        isVisible(candidate) &&
+        /^(继续|继续生成|好的|是|yes|continue)$/i.test(
+          String(candidate.textContent || "").trim(),
+        ),
+    );
+    if (button) {
+      button.click();
+      return "button";
+    }
+    const composer = findMuseComposer();
+    if (!composer) return "";
+    if (editableText(composer).trim()) return "";
+    replaceMuseComposerText("继续");
+    submitMuseComposer();
+    return "message";
+  }
+
+  function sendAutoContinueMessage() {
+    const composer = findMuseComposer();
+    if (!composer) return false;
+    if (editableText(composer).trim()) return false;
+    replaceMuseComposerText("继续");
+    submitMuseComposer();
+    return true;
+  }
+
+  function beginAutoContinueWatcher(
+    enabled,
+    timeoutEnabled = false,
+    idleTimeoutMs = 5 * 60 * 1000,
+    regenerateTextOnly = false,
+  ) {
+    autoContinueWatcher?.observer?.disconnect();
+    autoContinueWatcher = null;
+    autoContinuePreference = Boolean(enabled);
+    autoContinueTimeoutEnabled = Boolean(timeoutEnabled);
+    autoRegenerateTextOnly = Boolean(regenerateTextOnly);
+    if (!enabled) return () => {};
+    const watcher = {
+      observer: null,
+      seen: new Set(),
+      stopped: false,
+      lastReplyAt: 0,
+      replies: 0,
+      idleTimer: null,
+    };
+    for (const item of newAutoContinueQuestionKeys(watcher.seen)) {
+      watcher.seen.add(item.key);
+    }
+    const canReply = () =>
+      !watcher.stopped &&
+      autoContinuePreference &&
+      Date.now() - watcher.lastReplyAt >= 1800 &&
+      watcher.replies < 20;
+    const scheduleIdleReply = (delay = idleTimeoutMs) => {
+      clearTimeout(watcher.idleTimer);
+      if (!autoContinueTimeoutEnabled) return;
+      watcher.idleTimer = setTimeout(() => {
+        if (!canReply()) return;
+        const sent = sendAutoContinueMessage();
+        if (!sent) {
+          scheduleIdleReply(15000);
+          return;
+        }
+        watcher.lastReplyAt = Date.now();
+        watcher.replies += 1;
+        showToast("Muse 5 分钟无响应，已自动回复：继续");
+        scheduleIdleReply();
+      }, delay);
+    };
+    const scan = () => {
+      if (
+        !canReply()
+      ) {
+        return;
+      }
+      for (const item of newAutoContinueQuestionKeys(watcher.seen)) {
+        watcher.seen.add(item.key);
+        const action = answerContinueQuestion(item.parent);
+        if (!action) continue;
+        watcher.lastReplyAt = Date.now();
+        watcher.replies += 1;
+        showToast(`已自动回复 Muse：继续（${action === "button" ? "按钮" : "消息"}）`);
+        scheduleIdleReply();
+        break;
+      }
+    };
+    watcher.observer = new MutationObserver(() => {
+      setTimeout(scan, 220);
+    });
+    watcher.observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+    });
+    autoContinueWatcher = watcher;
+    scheduleIdleReply();
+    return () => {
+      watcher.stopped = true;
+      clearTimeout(watcher.idleTimer);
+      watcher.observer?.disconnect();
+      if (autoContinueWatcher === watcher) autoContinueWatcher = null;
+    };
+  }
+
+  function isGeneratedPresentationImage(image) {
+    if (!image?.closest) return false;
+    const presentation = image.closest(
+      '[data-testid="hatch-chat-attachment-presentation-image"], ' +
+        'button[aria-label^="Open generated image"]',
+    );
+    if (!presentation) return false;
+    const source = image.currentSrc || image.src || "";
+    return Boolean(source) && !/avatar|favicon|logo/i.test(source);
+  }
+
+  function rememberGeneratedImages(node) {
+    const images = [];
+    if (node?.nodeType === Node.ELEMENT_NODE && node.tagName === "IMG") {
+      images.push(node);
+    }
+    if (node?.querySelectorAll) {
+      images.push(...node.querySelectorAll("img"));
+    }
+    for (const image of images) {
+      if (
+        isGeneratedPresentationImage(image) &&
+        !trackedGeneratedImages.includes(image)
+      ) {
+        trackedGeneratedImages.push(image);
+      }
+    }
+    if (trackedGeneratedImages.length > TRACKED_GENERATED_IMAGE_LIMIT) {
+      trackedGeneratedImages.splice(
+        0,
+        trackedGeneratedImages.length - TRACKED_GENERATED_IMAGE_LIMIT,
+      );
+    }
+  }
+
+  function videoSource(video) {
+    if (!video) return "";
+    return (
+      video.currentSrc ||
+      video.src ||
+      video.querySelector?.("source[src]")?.src ||
+      ""
+    );
+  }
+
+  function isGeneratedPresentationVideo(video) {
+    if (!video?.closest) return false;
+    const source = videoSource(video);
+    if (!source || /avatar|favicon|logo/i.test(source)) return false;
+    return (
+      !video.isConnected ||
+      isDomDisplayed(video) ||
+      Boolean(
+        video.closest(
+          'article, [data-testid*="attachment" i], [data-testid*="message" i], ' +
+            'button[aria-label*="generated video" i], [aria-label*="Open video" i]',
+        ),
+      )
+    );
+  }
+
+  function isGeneratedVideoLink(anchor) {
+    if (!anchor?.closest) return false;
+    const href = anchor.currentSrc || anchor.href || "";
+    if (!/\.(?:mp4|webm|mov|m4v)(?:[?#]|$)/i.test(href)) return false;
+    return Boolean(
+      anchor.closest(
+        'article, [data-testid*="attachment" i], [data-testid*="message" i], ' +
+          'button[aria-label*="video" i]',
+      ),
+    );
+  }
+
+  function rememberGeneratedVideos(node) {
+    const videos = [];
+    const anchors = [];
+    if (node?.nodeType === Node.ELEMENT_NODE) {
+      if (node.tagName === "VIDEO") videos.push(node);
+      if (node.tagName === "A") anchors.push(node);
+    }
+    if (node?.querySelectorAll) {
+      videos.push(...node.querySelectorAll("video"));
+      anchors.push(...node.querySelectorAll("a[href]"));
+    }
+    for (const video of videos) {
+      if (!isGeneratedPresentationVideo(video)) continue;
+      const source = videoSource(video);
+      const poster = video.poster || "";
+      if (
+        source &&
+        !trackedGeneratedVideos.some((item) => item.source === source)
+      ) {
+        trackedGeneratedVideos.push({ source, poster });
+      }
+    }
+    for (const anchor of anchors) {
+      const source = anchor.href || "";
+      if (
+        isGeneratedVideoLink(anchor) &&
+        !trackedGeneratedVideoLinks.includes(source)
+      ) {
+        trackedGeneratedVideoLinks.push(source);
+      }
+    }
+    if (trackedGeneratedVideos.length > TRACKED_GENERATED_VIDEO_LIMIT) {
+      trackedGeneratedVideos.splice(
+        0,
+        trackedGeneratedVideos.length - TRACKED_GENERATED_VIDEO_LIMIT,
+      );
+    }
+    if (trackedGeneratedVideoLinks.length > TRACKED_GENERATED_VIDEO_LIMIT) {
+      trackedGeneratedVideoLinks.splice(
+        0,
+        trackedGeneratedVideoLinks.length - TRACKED_GENERATED_VIDEO_LIMIT,
+      );
+    }
+  }
+
+  function installGeneratedImageObserver() {
+    if (generatedImageObserver || !document.body) return;
+    for (const image of document.images) rememberGeneratedImages(image);
+    rememberGeneratedVideos(document.body);
+    generatedImageObserver = new MutationObserver((records) => {
+      for (const record of records) {
+        if (record.type === "attributes") {
+          rememberGeneratedImages(record.target);
+          rememberGeneratedVideos(record.target);
+          continue;
+        }
+        for (const node of record.addedNodes) {
+          rememberGeneratedImages(node);
+          rememberGeneratedVideos(node);
+        }
+      }
+    });
+    generatedImageObserver.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["src", "href", "poster"],
+    });
+  }
+
   function generatedImages() {
-    return [...document.images].filter((image) => {
-      if (!isVisible(image)) return false;
+    const candidates = new Set([
+      ...document.images,
+      ...trackedGeneratedImages,
+    ]);
+    return [...candidates].filter((image) => {
+      if (!isGeneratedPresentationImage(image)) return false;
       const presentation = image.closest(
         '[data-testid="hatch-chat-attachment-presentation-image"], ' +
           'button[aria-label^="Open generated image"]',
       );
-      if (!presentation) return false;
+      if (
+        presentation?.isConnected &&
+        !isDomDisplayed(presentation)
+      ) {
+        return false;
+      }
       const width = image.naturalWidth || image.clientWidth;
       const height = image.naturalHeight || image.clientHeight;
-      const source = image.currentSrc || image.src || "";
-      return (
-        width >= 220 &&
-        height >= 220 &&
-        source &&
-        !/avatar|favicon|logo/i.test(source)
-      );
+      return width >= 220 && height >= 220;
     });
+  }
+
+  function generatedVideos() {
+    const entries = [...trackedGeneratedVideos];
+    for (const video of document.querySelectorAll("video")) {
+      if (!isGeneratedPresentationVideo(video)) continue;
+      const source = videoSource(video);
+      if (source && !entries.some((item) => item.source === source)) {
+        entries.push({ source, poster: video.poster || "" });
+      }
+    }
+    for (const source of trackedGeneratedVideoLinks) {
+      if (!entries.some((item) => item.source === source)) {
+        entries.push({ source, poster: "" });
+      }
+    }
+    return entries;
   }
 
   function deliveryFailureCount() {
@@ -570,16 +1238,33 @@
         (element) =>
           element.children.length === 0 &&
           /Delivery not confirmed/i.test(element.textContent || "") &&
-          isVisible(element),
+          isDomDisplayed(element),
       ).length;
   }
 
   async function waitForMuseImage(
     existingImages,
     deliveryBaseline = 0,
-    timeoutMs = 240000,
+    timeoutMs = museResponse.timeoutMs(
+      "single",
+      autoContinueTimeoutEnabled,
+    ),
+    responseBaseline = null,
   ) {
     const deadline = Date.now() + timeoutMs;
+    const existingSources = new Set(
+      [...existingImages]
+        .map((image) => image.currentSrc || image.src || "")
+        .filter(Boolean),
+    );
+    let activeResponseBaseline = responseBaseline;
+    let blockedText = "";
+    let blockedAt = 0;
+    const textOnlyState = {
+      signature: "",
+      since: 0,
+      retryUsed: false,
+    };
     while (Date.now() < deadline) {
       if (deliveryFailureCount() > deliveryBaseline) {
         throw new Error(
@@ -587,7 +1272,11 @@
         );
       }
       const candidate = generatedImages()
-        .filter((image) => !existingImages.has(image))
+        .filter(
+          (image) =>
+            !existingImages.has(image) &&
+            !existingSources.has(image.currentSrc || image.src || ""),
+        )
         .sort(
           (left, right) =>
             right.naturalWidth * right.naturalHeight -
@@ -597,20 +1286,69 @@
         await new Promise((resolve) => setTimeout(resolve, 800));
         return candidate.currentSrc || candidate.src;
       }
+      const currentBlockedText = blockedResponseText(activeResponseBaseline);
+      const shouldFastFailBlocked =
+        currentBlockedText &&
+        (!autoRegenerateTextOnly ||
+          museResponse.isCapacityBlocked(currentBlockedText));
+      if (shouldFastFailBlocked && !blockedAt) {
+        blockedText = currentBlockedText;
+        blockedAt = Date.now();
+        suspendAutoContinueForBlockedResponse();
+        showToast("Muse 明确表示当前图片未生成，正在等待 15 秒补图");
+      }
+      if (
+        blockedAt &&
+        Date.now() - blockedAt >= museResponse.BLOCKED_GRACE_MS
+      ) {
+        const capacityPrefix = museResponse.isCapacityBlocked(blockedText)
+          ? museResponse.CAPACITY_ERROR_PREFIX
+          : "";
+        throw new Error(
+          `${capacityPrefix}Muse 明确未完成当前图片：${blockedText.slice(0, 90)}`,
+        );
+      }
+      activeResponseBaseline = await handleTextOnlyResponse(
+        textOnlyState,
+        activeResponseBaseline,
+        "单图",
+      );
       await new Promise((resolve) => setTimeout(resolve, 1200));
     }
-    throw new Error("等待 Muse 生成图片超过 4 分钟");
+    throw new Error(
+      `等待 Muse 生成图片超时（${Math.round(timeoutMs / 1000)} 秒）`,
+    );
   }
 
   async function waitForMuseImages(
     existingImages,
     expectedCount,
     deliveryBaseline = 0,
-    timeoutMs = 300000,
+    timeoutMs = museResponse.timeoutMs(
+      "batch",
+      autoContinueTimeoutEnabled,
+    ),
+    filterExistingSources = false,
+    responseBaseline = null,
   ) {
     const deadline = Date.now() + timeoutMs;
+    const existingSources = filterExistingSources
+      ? new Set(
+          [...existingImages]
+            .map((image) => image.currentSrc || image.src || "")
+            .filter(Boolean),
+        )
+      : null;
     let stableSource = "";
     let stableSince = 0;
+    let activeResponseBaseline = responseBaseline;
+    let blockedText = "";
+    let blockedAt = 0;
+    const textOnlyState = {
+      signature: "",
+      since: 0,
+      retryUsed: false,
+    };
     while (Date.now() < deadline) {
       if (deliveryFailureCount() > deliveryBaseline) {
         throw new Error(
@@ -618,7 +1356,12 @@
         );
       }
       const images = generatedImages()
-        .filter((image) => !existingImages.has(image))
+        .filter(
+          (image) =>
+            !existingImages.has(image) &&
+            (!existingSources ||
+              !existingSources.has(image.currentSrc || image.src || "")),
+        )
         .sort(
           (left, right) =>
             right.naturalWidth * right.naturalHeight -
@@ -646,10 +1389,95 @@
           stableSince = Date.now();
         }
       }
+      const currentBlockedText = blockedResponseText(activeResponseBaseline);
+      const shouldFastFailBlocked =
+        currentBlockedText &&
+        (!autoRegenerateTextOnly ||
+          museResponse.isCapacityBlocked(currentBlockedText));
+      if (shouldFastFailBlocked && !blockedAt) {
+        blockedText = currentBlockedText;
+        blockedAt = Date.now();
+        suspendAutoContinueForBlockedResponse();
+        showToast("Muse 明确表示当前批次未生成，正在等待 15 秒补图");
+      }
+      if (
+        blockedAt &&
+        Date.now() - blockedAt >= museResponse.BLOCKED_GRACE_MS
+      ) {
+        const capacityPrefix = museResponse.isCapacityBlocked(blockedText)
+          ? museResponse.CAPACITY_ERROR_PREFIX
+          : "";
+        throw new Error(
+          `${capacityPrefix}Muse 明确未完成当前批次：${blockedText.slice(0, 90)}`,
+        );
+      }
+      activeResponseBaseline = await handleTextOnlyResponse(
+        textOnlyState,
+        activeResponseBaseline,
+        "批量",
+      );
       await new Promise((resolve) => setTimeout(resolve, 1200));
     }
     throw new Error(
       `等待 Muse 批量生成超时，未获得完整的 ${expectedCount} 张独立图片`,
+    );
+  }
+
+  async function waitForMuseVideo(
+    existingSources,
+    deliveryBaseline = 0,
+    timeoutMs = museResponse.timeoutMs(
+      "video",
+      autoContinueTimeoutEnabled,
+    ),
+    responseBaseline = null,
+  ) {
+    const deadline = Date.now() + timeoutMs;
+    const baseline = new Set(existingSources || []);
+    let stableSource = "";
+    let stableSince = 0;
+    let blockedText = "";
+    let blockedAt = 0;
+    while (Date.now() < deadline) {
+      if (deliveryFailureCount() > deliveryBaseline) {
+        throw new Error(
+          "Muse 未确认收到视频请求（Delivery not confirmed），本任务可重试",
+        );
+      }
+      const candidates = generatedVideos().filter(
+        (item) => item.source && !baseline.has(item.source),
+      );
+      const source = candidates.at(-1)?.source || "";
+      if (source) {
+        if (source === stableSource) {
+          if (Date.now() - stableSince >= 1800) return source;
+        } else {
+          stableSource = source;
+          stableSince = Date.now();
+        }
+      }
+      const currentBlockedText = blockedResponseText(responseBaseline);
+      if (currentBlockedText && !blockedAt) {
+        blockedText = currentBlockedText;
+        blockedAt = Date.now();
+        suspendAutoContinueForBlockedResponse();
+        showToast("Muse 明确表示当前视频未生成，正在等待 15 秒补发");
+      }
+      if (
+        blockedAt &&
+        Date.now() - blockedAt >= museResponse.BLOCKED_GRACE_MS
+      ) {
+        const capacityPrefix = museResponse.isCapacityBlocked(blockedText)
+          ? museResponse.CAPACITY_ERROR_PREFIX
+          : "";
+        throw new Error(
+          `${capacityPrefix}Muse 明确未完成当前视频：${blockedText.slice(0, 90)}`,
+        );
+      }
+      await new Promise((resolve) => setTimeout(resolve, 1200));
+    }
+    throw new Error(
+      `等待 Muse 生成视频超时（${Math.round(timeoutMs / 1000)} 秒）`,
     );
   }
 
@@ -685,6 +1513,56 @@
     return new Blob([bytes], { type: payload.type || "image/png" });
   }
 
+  async function fetchMuseVideo(url) {
+    if (url.startsWith("data:")) {
+      const [header, payload = ""] = url.split(",", 2);
+      const type = header.match(/^data:([^;,]+)/)?.[1] || "video/mp4";
+      if (header.includes(";base64")) {
+        const binary = atob(payload);
+        const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+        return new Blob([bytes], { type });
+      }
+      return new Blob([decodeURIComponent(payload)], { type });
+    }
+    try {
+      const response = await fetch(url, {
+        credentials: "include",
+        cache: "force-cache",
+      });
+      if (response.ok) return response.blob();
+    } catch {
+      // Fall through to the extension service worker.
+    }
+    if (!url.startsWith("https://")) {
+      throw new Error("无法读取 Muse 返回的视频 Blob");
+    }
+    const payload = await sendMessage("VF_FETCH_VIDEO", { url });
+    const binary = atob(payload.data);
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) {
+      bytes[index] = binary.charCodeAt(index);
+    }
+    return new Blob([bytes], {
+      type: payload.type || "video/mp4",
+    });
+  }
+
+  function videoMimeType(blob, source) {
+    const type = String(blob?.type || "").toLowerCase();
+    if (type.startsWith("video/")) return type;
+    if (/\.webm(?:[?#]|$)/i.test(source)) return "video/webm";
+    if (/\.mov(?:[?#]|$)/i.test(source)) return "video/quicktime";
+    if (/\.m4v(?:[?#]|$)/i.test(source)) return "video/x-m4v";
+    return "video/mp4";
+  }
+
+  function videoExtension(type, source = "") {
+    if (/\.webm(?:[?#]|$)/i.test(source) || /webm/i.test(type)) return "webm";
+    if (/\.mov(?:[?#]|$)/i.test(source) || /quicktime/i.test(type)) return "mov";
+    if (/\.m4v(?:[?#]|$)/i.test(source) || /x-m4v/i.test(type)) return "m4v";
+    return "mp4";
+  }
+
   async function normalizeGeneratedImage(blob, filename) {
     try {
       const bitmap = await createImageBitmap(blob);
@@ -709,37 +1587,100 @@
     return new File([blob], filename, { type: blob.type || "image/png" });
   }
 
-  function productColorPrompt(color, index, total, region = "whole") {
+  function withMuseSource(file, url) {
+    try {
+      Object.defineProperty(file, "museSourceUrl", {
+        value: String(url || ""),
+        configurable: true,
+      });
+    } catch {
+      // Link-only export falls back when the browser cannot annotate File.
+    }
+    return file;
+  }
+
+  function productColorPrompt(color, index, total, region = "whole", template = "") {
     const name = color.name ? `${color.name}，` : "";
     const regionName = {
       whole: "商品主体",
       lower: "下装（裤子或裙装）",
       upper: "上装（外套或上衣）",
     }[region] || "商品主体";
-    return [
-      "第一张附件是商品参考图，第二张附件是目标颜色色卡，色卡只用于取色，不要出现在结果里。",
-      "保持人物姿态、产品裁切、背景、服装版型、口袋、腰带、缝线、面料纹理、褶皱和光影不变。",
-      `只把${regionName}的颜色改为 ${colorDescription(color.hex)} ${color.hex}（${name}目标色号），与第二张色卡一致。`,
-      "目标颜色必须清晰可见，不能保留原来的主色；衣服的印花、logo和五金细节不能变色。",
-      `这是第 ${index}/${total} 个颜色，输出一张与原图相同比例和构图的单张商品图。`,
-      "不要生成拼图、色卡、文字或水印，不要改变其他产品和非目标区域。",
-    ].join("");
+    return promptTemplates.render(
+      template || promptTemplates.DEFAULTS.product_color,
+      {
+        region_name: regionName,
+        color_description: colorDescription(color.hex),
+        color_hex: color.hex,
+        color_name: name,
+        index,
+        total,
+      },
+    );
   }
 
-  function patternTransferPrompt(backgroundMode, index, total) {
+  function productColorBatchPrompt(
+    colors,
+    total,
+    region = "whole",
+    template = "",
+  ) {
+    const regionName =
+      {
+        whole: "商品主体",
+        lower: "下装（裤子或裙装）",
+        upper: "上装（外套或上衣）",
+      }[region] || "商品主体";
+    const colorList = colors
+      .map(
+        (color, index) =>
+          `${String(index + 1).padStart(2, "0")}. ${color.hex}` +
+          `${color.name ? `（${color.name}）` : ""}` +
+          `：${colorDescription(color.hex)}`,
+      )
+      .join("\n");
+    return promptTemplates.render(
+      template || promptTemplates.DEFAULTS.product_color_batch,
+      {
+        region_name: regionName,
+        color_list: colorList,
+        color_count: colors.length,
+        total,
+      },
+    );
+  }
+
+  function patternTransferPrompt(
+    backgroundMode,
+    index,
+    total,
+    template = "",
+    categoryValue = "auto",
+  ) {
+    const category = promptTemplates.productCategoryValues(
+      categoryValue,
+    );
     const backgroundInstruction =
       backgroundMode === "match"
         ? "背景可以根据印花风格做协调改造，但必须保留商品主体与地面的自然接触阴影和相同拍摄角度。"
         : "严格保持白底商品图原有的背景、地面、光线、阴影、构图和裁切不变。";
-    return [
-      "第一张附件是白底商品主图，第二张附件是印花风格参考图。",
-      "只从第二张图提取印花、图案、配色和视觉风格，把印花自然套到第一张图的商品主体上。",
-      "必须保留白底商品原有的轮廓、版型、褶皱、绒毛/面料纹理、缝线、口袋、拉链、五金、高光和明暗层次，不能把商品变成平面贴图。",
-      "参考图中的人物、裤子、背景、文案、标签、边框、水印和UI元素都不要放进结果，只参考印花风格。",
-      backgroundInstruction,
-      `这是第 ${index}/${total} 张参考图，只输出一张单张商品图。`,
-      "No collage, no watermark, no reference labels, no added text, exact product identity.",
-    ].join("");
+    const rendered = promptTemplates.render(
+      template || promptTemplates.DEFAULTS.pattern_single,
+      {
+        background_instruction: backgroundInstruction,
+        category_name: category.category_name,
+        category_print_area: category.category_print_area,
+        category_base_surface: category.category_base_surface,
+        category_protected_area: category.category_protected_area,
+        category_model_region: category.category_model_region,
+        index,
+        total,
+      },
+    );
+    return promptTemplates.ensureProductCategoryConstraint(
+      rendered,
+      categoryValue,
+    );
   }
 
   function patternBatchPrompt(
@@ -747,7 +1688,12 @@
     references,
     batchIndex,
     total,
+    template = "",
+    categoryValue = "auto",
   ) {
+    const category = promptTemplates.productCategoryValues(
+      categoryValue,
+    );
     const names = references
       .map(
         (item, index) =>
@@ -759,17 +1705,25 @@
       backgroundMode === "match"
         ? "背景可以根据每张参考图的印花风格做协调改造，但必须保留商品主体与地面的自然接触阴影和相同拍摄角度。"
         : "严格保持白底商品图原有的背景、地面、光线、阴影、构图和裁切不变。";
-    return [
-      "第一张附件是白底商品主图，第二张附件是一个 ZIP，里面有按文件名排序的多张印花参考图。",
-      `请解压 ZIP，按下面给出的顺序逐张处理：\n${names}`,
-      `这是总第 ${batchIndex} 批，本批必须输出 ${references.length} 张相互独立的商品图，一张参考图对应一张输出。`,
-      "每张图只提取对应参考图中的印花、图案、配色和视觉风格，并把印花自然套到第一张白底商品的对应位置。",
-      "必须保留白底商品原有的轮廓、版型、褶皱、绒毛/面料纹理、缝线、口袋、拉链、五金、高光和明暗层次。",
-      "参考图中的人物、背景、文案、标签、边框、水印和UI元素都不要放进结果，只参考印花风格。",
-      backgroundInstruction,
-      "严禁拼图、九宫格、四宫格、色卡、对比页或将多个商品放进同一张图；必须返回多个独立图片附件，并按输入文件名顺序排列。",
-      `当前任务共 ${total} 张参考图。No collage, no grid, exactly ${references.length} separate images.`,
-    ].join("\n");
+    const rendered = promptTemplates.render(
+      template || promptTemplates.DEFAULTS.pattern_batch,
+      {
+        reference_list: names,
+        batch_index: batchIndex,
+        batch_count: references.length,
+        background_instruction: backgroundInstruction,
+        category_name: category.category_name,
+        category_print_area: category.category_print_area,
+        category_base_surface: category.category_base_surface,
+        category_protected_area: category.category_protected_area,
+        category_model_region: category.category_model_region,
+        total,
+      },
+    );
+    return promptTemplates.ensureProductCategoryConstraint(
+      rendered,
+      categoryValue,
+    );
   }
 
   function arrayBufferToBase64(buffer) {
@@ -794,27 +1748,86 @@
     });
   }
 
-  async function generateColor(master, color, index, total, region) {
+  async function generateColor(master, color, index, total, region, template = "") {
     if (!findMuseComposer()) {
       throw new Error("未找到 Muse 对话输入框，请先完成 Muse 登录");
     }
     const swatch = await createColorSwatch(color);
     attachFilesToMuse([master, swatch]);
     await new Promise((resolve) => setTimeout(resolve, 1200));
+    const responseBaseline = assistantResponseBaseline();
     const existingImages = new Set(generatedImages());
     const deliveryBaseline = deliveryFailureCount();
-    replaceMuseComposerText(productColorPrompt(color, index, total, region));
+    replaceMuseComposerText(
+      productColorPrompt(color, index, total, region, template),
+    );
     await new Promise((resolve) => setTimeout(resolve, 250));
     submitMuseComposer();
     const generatedUrl = await waitForMuseImage(
       existingImages,
       deliveryBaseline,
+      undefined,
+      responseBaseline,
     );
     const blob = await fetchMuseImage(generatedUrl);
-    return normalizeGeneratedImage(
-      blob,
-      `variant-${String(index).padStart(2, "0")}-${color.hex.slice(1)}.webp`,
+    return withMuseSource(
+      await normalizeGeneratedImage(
+        blob,
+        `variant-${String(index).padStart(2, "0")}-${color.hex.slice(1)}.webp`,
+      ),
+      generatedUrl,
     );
+  }
+
+  async function generateColorBatch(
+    master,
+    colors,
+    total,
+    region,
+    template = "",
+  ) {
+    if (!findMuseComposer()) {
+      throw new Error("未找到 Muse 对话输入框，请先完成 Muse 登录");
+    }
+    const swatches = [];
+    for (const color of colors) {
+      swatches.push(await createColorSwatch(color));
+    }
+    attachFilesToMuse([master, ...swatches]);
+    await new Promise((resolve) => setTimeout(resolve, 1400));
+    const responseBaseline = assistantResponseBaseline();
+    const existingImages = new Set(generatedImages());
+    const deliveryBaseline = deliveryFailureCount();
+    replaceMuseComposerText(
+      productColorBatchPrompt(colors, total, region, template),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    submitMuseComposer();
+    const images = await waitForMuseImages(
+      existingImages,
+      colors.length,
+      deliveryBaseline,
+      museResponse.timeoutMs("batch", autoContinueTimeoutEnabled),
+      true,
+      responseBaseline,
+    );
+    const outputs = [];
+    for (let index = 0; index < images.length; index += 1) {
+      const blob = await fetchMuseImage(
+        images[index].currentSrc || images[index].src,
+      );
+      const file = await normalizeGeneratedImage(
+        blob,
+        `color-batch-${String(colors[index].hex.slice(1)).padStart(6, "0")}.webp`,
+      );
+      outputs.push({
+        name: file.name,
+        type: file.type,
+        data: arrayBufferToBase64(await file.arrayBuffer()),
+        url: images[index].currentSrc || images[index].src,
+      });
+    }
+    return { outputs };
   }
 
   async function generatePattern(message) {
@@ -825,6 +1838,7 @@
     }
     attachFilesToMuse([base, reference]);
     await new Promise((resolve) => setTimeout(resolve, 1400));
+    const responseBaseline = assistantResponseBaseline();
     const existingImages = new Set(generatedImages());
     const deliveryBaseline = deliveryFailureCount();
     replaceMuseComposerText(
@@ -832,6 +1846,8 @@
         message.backgroundMode,
         message.index,
         message.total,
+        message.template,
+        message.category,
       ),
     );
     await new Promise((resolve) => setTimeout(resolve, 250));
@@ -839,16 +1855,194 @@
     const generatedUrl = await waitForMuseImage(
       existingImages,
       deliveryBaseline,
+      undefined,
+      responseBaseline,
     );
     const blob = await fetchMuseImage(generatedUrl);
     const referenceName = String(message.reference?.name || "pattern")
       .replace(/\.[^.]+$/, "")
       .replace(/[^\w-]+/g, "-")
       .slice(0, 50);
-    return normalizeGeneratedImage(
-      blob,
-      `pattern-${String(message.index).padStart(2, "0")}-${referenceName}.webp`,
+    return withMuseSource(
+      await normalizeGeneratedImage(
+        blob,
+        `pattern-${String(message.index).padStart(2, "0")}-${referenceName}.webp`,
+      ),
+      generatedUrl,
     );
+  }
+
+  async function generateCopyVariant(message) {
+    const master = base64ToFile(message.master);
+    if (!findMuseComposer()) {
+      throw new Error("未找到 Muse 对话输入框，请先完成 Muse 登录");
+    }
+    attachFilesToMuse([master]);
+    await new Promise((resolve) => setTimeout(resolve, 1400));
+    const responseBaseline = assistantResponseBaseline();
+    const existingImages = new Set(generatedImages());
+    const deliveryBaseline = deliveryFailureCount();
+    replaceMuseComposerText(
+      message.direct === true
+        ? message.prompt
+        : [
+            "请严格基于第一张附件重新绘制，不要返回原图，也不要只更换背景。",
+            message.prompt,
+            "必须让商品主体按照“变为”后的描述发生可见变化，同时保留真实商品结构、版型、褶皱、绒毛、面料纹理和光影。",
+          ].join("\n"),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    submitMuseComposer();
+    const generatedUrl = await waitForMuseImage(
+      existingImages,
+      deliveryBaseline,
+      undefined,
+      responseBaseline,
+    );
+    const blob = await fetchMuseImage(generatedUrl);
+    return withMuseSource(
+      await normalizeGeneratedImage(
+        blob,
+        `copy-variant-${String(message.index).padStart(2, "0")}.webp`,
+      ),
+      generatedUrl,
+    );
+  }
+
+  async function generateCopyBatch(message) {
+    const master = base64ToFile(message.master);
+    if (!findMuseComposer()) {
+      throw new Error("未找到 Muse 对话输入框，请先完成 Muse 登录");
+    }
+    attachFilesToMuse([master]);
+    await new Promise((resolve) => setTimeout(resolve, 1400));
+    const responseBaseline = assistantResponseBaseline();
+    const existingImages = new Set(generatedImages());
+    const deliveryBaseline = deliveryFailureCount();
+    replaceMuseComposerText(message.prompt);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    submitMuseComposer();
+    const images = await waitForMuseImages(
+      existingImages,
+      message.count,
+      deliveryBaseline,
+      museResponse.timeoutMs("batch", autoContinueTimeoutEnabled),
+      true,
+      responseBaseline,
+    );
+    const outputs = [];
+    for (let index = 0; index < images.length; index += 1) {
+      const blob = await fetchMuseImage(images[index].currentSrc || images[index].src);
+      const file = await normalizeGeneratedImage(
+        blob,
+        `copy-batch-${String(message.batch_index).padStart(2, "0")}-` +
+          `${String(index + 1).padStart(2, "0")}.webp`,
+      );
+      outputs.push({
+        name: file.name,
+        type: file.type,
+        data: arrayBufferToBase64(await file.arrayBuffer()),
+        url: images[index].currentSrc || images[index].src,
+      });
+    }
+    return { outputs };
+  }
+
+  function logoDesignPrompt(instruction, template = "") {
+    return promptTemplates.render(
+      template || promptTemplates.DEFAULTS.logo_design,
+      { instruction: String(instruction || "").trim() },
+    );
+  }
+
+  function logoDesignBatchPrompt(
+    instruction,
+    outputCount,
+    requestIndex,
+    template = "",
+  ) {
+    return promptTemplates.render(
+      template || promptTemplates.DEFAULTS.logo_design_batch,
+      {
+        instruction: String(instruction || "").trim(),
+        output_count: outputCount,
+        request_index: requestIndex,
+      },
+    );
+  }
+
+  async function generateLogoDesign(message) {
+    const master = base64ToFile(message.master);
+    if (!findMuseComposer()) {
+      throw new Error("未找到 Muse 对话输入框，请先完成 Muse 登录");
+    }
+    attachFilesToMuse([master]);
+    await new Promise((resolve) => setTimeout(resolve, 1400));
+    const responseBaseline = assistantResponseBaseline();
+    const existingImages = new Set(generatedImages());
+    const deliveryBaseline = deliveryFailureCount();
+    replaceMuseComposerText(logoDesignPrompt(message.prompt, message.template));
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    submitMuseComposer();
+    const generatedUrl = await waitForMuseImage(
+      existingImages,
+      deliveryBaseline,
+      undefined,
+      responseBaseline,
+    );
+    const blob = await fetchMuseImage(generatedUrl);
+    return withMuseSource(
+      await normalizeGeneratedImage(blob, "logo-redesign.webp"),
+      generatedUrl,
+    );
+  }
+
+  async function generateLogoDesignBatch(message) {
+    const master = base64ToFile(message.master);
+    if (!findMuseComposer()) {
+      throw new Error("未找到 Muse 对话输入框，请先完成 Muse 登录");
+    }
+    attachFilesToMuse([master]);
+    await new Promise((resolve) => setTimeout(resolve, 1400));
+    const responseBaseline = assistantResponseBaseline();
+    const existingImages = new Set(generatedImages());
+    const deliveryBaseline = deliveryFailureCount();
+    replaceMuseComposerText(
+      logoDesignBatchPrompt(
+        message.prompt,
+        message.count,
+        message.request_index,
+        message.template,
+      ),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    submitMuseComposer();
+    const images = await waitForMuseImages(
+      existingImages,
+      message.count,
+      deliveryBaseline,
+      museResponse.timeoutMs("batch", autoContinueTimeoutEnabled),
+      true,
+      responseBaseline,
+    );
+    const outputs = [];
+    for (let index = 0; index < images.length; index += 1) {
+      const blob = await fetchMuseImage(
+        images[index].currentSrc || images[index].src,
+      );
+      const file = await normalizeGeneratedImage(
+        blob,
+        `logo-redesign-${String(message.request_index).padStart(2, "0")}-` +
+          `${String(index + 1).padStart(2, "0")}.webp`,
+      );
+      outputs.push({
+        name: file.name,
+        type: file.type,
+        data: arrayBufferToBase64(await file.arrayBuffer()),
+        url: images[index].currentSrc || images[index].src,
+      });
+    }
+    return { outputs };
   }
 
   async function generatePatternBatch(message) {
@@ -859,6 +2053,7 @@
     }
     attachFilesToMuse([base, archive]);
     await new Promise((resolve) => setTimeout(resolve, 1500));
+    const responseBaseline = assistantResponseBaseline();
     const existingImages = new Set(generatedImages());
     const deliveryBaseline = deliveryFailureCount();
     replaceMuseComposerText(
@@ -867,6 +2062,8 @@
         message.references,
         message.index,
         message.total,
+        message.template,
+        message.category,
       ),
     );
     await new Promise((resolve) => setTimeout(resolve, 300));
@@ -875,6 +2072,9 @@
       existingImages,
       message.references.length,
       deliveryBaseline,
+      museResponse.timeoutMs("batch", autoContinueTimeoutEnabled),
+      true,
+      responseBaseline,
     );
     const outputs = [];
     const references = [];
@@ -894,10 +2094,49 @@
         name: file.name,
         type: file.type,
         data: arrayBufferToBase64(await file.arrayBuffer()),
+        url: images[index].currentSrc || images[index].src,
       });
       references.push(reference);
     }
     return { outputs, references };
+  }
+
+  async function generateProductVideo(message) {
+    const master = base64ToFile(message.master);
+    if (!findMuseComposer()) {
+      throw new Error("未找到 Muse 对话输入框，请先完成 Muse 登录");
+    }
+    attachFilesToMuse([master]);
+    await new Promise((resolve) => setTimeout(resolve, 1400));
+    const responseBaseline = assistantResponseBaseline();
+    const existingVideos = new Set(
+      generatedVideos().map((item) => item.source),
+    );
+    const deliveryBaseline = deliveryFailureCount();
+    replaceMuseComposerText(
+      promptTemplates.ensureVideoNoFaceConstraint(
+        message.prompt ||
+          promptTemplates.DEFAULTS.video_showcase,
+      ),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    submitMuseComposer();
+    const videoUrl = await waitForMuseVideo(
+      existingVideos,
+      deliveryBaseline,
+      undefined,
+      responseBaseline,
+    );
+    const blob = await fetchMuseVideo(videoUrl);
+    const type = videoMimeType(blob, videoUrl);
+    const extension = videoExtension(type, videoUrl);
+    const requestIndex = Number(message.request_index || 1);
+    const file = new File(
+      [blob],
+      `product-video-${String(requestIndex).padStart(2, "0")}.${extension}`,
+      { type },
+    );
+    return withMuseSource(file, videoUrl);
   }
 
   async function handleMuseGeneration(message) {
@@ -908,11 +2147,13 @@
       message.index,
       message.total,
       message.region,
+      message.template,
     );
     return {
       name: file.name,
       type: file.type,
       data: arrayBufferToBase64(await file.arrayBuffer()),
+      url: file.museSourceUrl || "",
     };
   }
 
@@ -971,18 +2212,108 @@
       return false;
     }
     if (message?.type === "VF_PING") {
-      sendResponse({ ok: true, data: { muse: true } });
+      if (typeof message.autoRegenerateTextOnly === "boolean") {
+        autoRegenerateTextOnly = message.autoRegenerateTextOnly;
+      }
+      sendResponse({
+        ok: true,
+        data: { muse: true, autoContinue: autoContinuePreference },
+      });
       return false;
     }
+    if (message?.type === "VF_SET_AUTO_CONTINUE") {
+      autoContinuePreference = message.enabled === true;
+      autoContinueTimeoutEnabled = message.timeoutEnabled === true;
+      if (!autoContinuePreference) {
+        clearTimeout(autoContinueWatcher?.idleTimer);
+        autoContinueWatcher?.observer?.disconnect();
+        autoContinueWatcher = null;
+      }
+      sendResponse({
+        ok: true,
+        data: {
+          enabled: autoContinuePreference,
+          timeoutEnabled: autoContinueTimeoutEnabled,
+        },
+      });
+      return false;
+    }
+    if (message?.type === "VF_SET_AUTO_REGENERATE") {
+      autoRegenerateTextOnly = message.enabled === true;
+      sendResponse({
+        ok: true,
+        data: { enabled: autoRegenerateTextOnly },
+      });
+      return false;
+    }
+    if (message?.type === "VF_MUSE_GENERATE_VIDEO") {
+      const stopAutoContinue = beginAutoContinueWatcher(
+        message.autoContinue === true,
+        message.autoContinueTimeout === true,
+        message.autoContinueIdleMs,
+        false,
+      );
+      generateProductVideo(message)
+        .then(async (file) =>
+          sendResponse({
+            ok: true,
+            data: {
+              name: file.name,
+              type: file.type,
+              data: arrayBufferToBase64(await file.arrayBuffer()),
+              url: file.museSourceUrl || "",
+            },
+          }),
+        )
+        .catch((error) =>
+          sendResponse({ ok: false, error: error.message }),
+        )
+        .finally(stopAutoContinue);
+      return true;
+    }
     if (message?.type === "VF_MUSE_GENERATE_COLOR") {
+      const stopAutoContinue = beginAutoContinueWatcher(
+        message.autoContinue === true,
+        message.autoContinueTimeout === true,
+        message.autoContinueIdleMs,
+        message.autoRegenerateTextOnly === true,
+      );
       handleMuseGeneration(message)
         .then((data) => sendResponse({ ok: true, data }))
         .catch((error) =>
           sendResponse({ ok: false, error: error.message }),
-        );
+        )
+        .finally(stopAutoContinue);
+      return true;
+    }
+    if (message?.type === "VF_MUSE_GENERATE_COLOR_BATCH") {
+      const stopAutoContinue = beginAutoContinueWatcher(
+        message.autoContinue === true,
+        message.autoContinueTimeout === true,
+        message.autoContinueIdleMs,
+        message.autoRegenerateTextOnly === true,
+      );
+      generateColorBatch(
+        base64ToFile(message.master),
+        Array.isArray(message.colors) ? message.colors : [],
+        message.total,
+        message.region,
+        message.template,
+      )
+        .then((data) => sendResponse({ ok: true, data }))
+        .catch((error) =>
+          sendResponse({ ok: false, error: error.message }),
+        )
+        .finally(stopAutoContinue);
       return true;
     }
     if (message?.type === "VF_MUSE_GENERATE_PATTERN") {
+      const stopAutoContinue = beginAutoContinueWatcher(
+        message.autoContinue === true,
+        message.autoContinueTimeout === true,
+        message.autoContinueIdleMs,
+        message.autoRegenerateTextOnly === true,
+      );
       generatePattern(message)
         .then(async (file) =>
           sendResponse({
@@ -991,20 +2322,109 @@
               name: file.name,
               type: file.type,
               data: arrayBufferToBase64(await file.arrayBuffer()),
+              url: file.museSourceUrl || "",
             },
           }),
         )
         .catch((error) =>
           sendResponse({ ok: false, error: error.message }),
-        );
+        )
+        .finally(stopAutoContinue);
+      return true;
+    }
+    if (message?.type === "VF_MUSE_GENERATE_COPY_VARIANT") {
+      const stopAutoContinue = beginAutoContinueWatcher(
+        message.autoContinue === true,
+        message.autoContinueTimeout === true,
+        message.autoContinueIdleMs,
+        message.autoRegenerateTextOnly === true,
+      );
+      generateCopyVariant(message)
+        .then(async (file) =>
+          sendResponse({
+            ok: true,
+            data: {
+              name: file.name,
+              type: file.type,
+              data: arrayBufferToBase64(await file.arrayBuffer()),
+              url: file.museSourceUrl || "",
+            },
+          }),
+        )
+        .catch((error) =>
+          sendResponse({ ok: false, error: error.message }),
+        )
+        .finally(stopAutoContinue);
+      return true;
+    }
+    if (message?.type === "VF_MUSE_GENERATE_COPY_BATCH") {
+      const stopAutoContinue = beginAutoContinueWatcher(
+        message.autoContinue === true,
+        message.autoContinueTimeout === true,
+        message.autoContinueIdleMs,
+        message.autoRegenerateTextOnly === true,
+      );
+      generateCopyBatch(message)
+        .then((data) => sendResponse({ ok: true, data }))
+        .catch((error) =>
+          sendResponse({ ok: false, error: error.message }),
+        )
+        .finally(stopAutoContinue);
+      return true;
+    }
+    if (message?.type === "VF_MUSE_GENERATE_LOGO_DESIGN") {
+      const stopAutoContinue = beginAutoContinueWatcher(
+        message.autoContinue === true,
+        message.autoContinueTimeout === true,
+        message.autoContinueIdleMs,
+        message.autoRegenerateTextOnly === true,
+      );
+      generateLogoDesign(message)
+        .then(async (file) =>
+          sendResponse({
+            ok: true,
+            data: {
+              name: file.name,
+              type: file.type,
+              data: arrayBufferToBase64(await file.arrayBuffer()),
+              url: file.museSourceUrl || "",
+            },
+          }),
+        )
+        .catch((error) =>
+          sendResponse({ ok: false, error: error.message }),
+        )
+        .finally(stopAutoContinue);
+      return true;
+    }
+    if (message?.type === "VF_MUSE_GENERATE_LOGO_DESIGN_BATCH") {
+      const stopAutoContinue = beginAutoContinueWatcher(
+        message.autoContinue === true,
+        message.autoContinueTimeout === true,
+        message.autoContinueIdleMs,
+        message.autoRegenerateTextOnly === true,
+      );
+      generateLogoDesignBatch(message)
+        .then((data) => sendResponse({ ok: true, data }))
+        .catch((error) =>
+          sendResponse({ ok: false, error: error.message }),
+        )
+        .finally(stopAutoContinue);
       return true;
     }
     if (message?.type === "VF_MUSE_GENERATE_PATTERN_BATCH") {
+      const stopAutoContinue = beginAutoContinueWatcher(
+        message.autoContinue === true,
+        message.autoContinueTimeout === true,
+        message.autoContinueIdleMs,
+        message.autoRegenerateTextOnly === true,
+      );
       generatePatternBatch(message)
         .then((data) => sendResponse({ ok: true, data }))
         .catch((error) =>
           sendResponse({ ok: false, error: error.message }),
-        );
+        )
+        .finally(stopAutoContinue);
       return true;
     }
     if (message?.type === "VF_INSERT_SUMMARY") {
@@ -1031,4 +2451,5 @@
 
   installWidget();
   installWidgetMessages();
+  installGeneratedImageObserver();
 })();

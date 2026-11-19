@@ -14,6 +14,23 @@ const local = {
   },
 };
 const session = {};
+const fetchCalls = [];
+
+async function fetchMock(url) {
+  fetchCalls.push(String(url));
+  const bytes = new TextEncoder().encode("mock-video");
+  return {
+    ok: true,
+    headers: {
+      get(name) {
+        return name.toLowerCase() === "content-type" ? "video/mp4" : null;
+      },
+    },
+    async arrayBuffer() {
+      return bytes.buffer;
+    },
+  };
+}
 
 const chromeMock = {
   storage: {
@@ -48,7 +65,7 @@ const chromeMock = {
     async sendMessage() {},
     async openOptionsPage() {},
     getManifest() {
-      return { version: "0.4.1" };
+      return { version: "0.13.1" };
     },
   },
   sidePanel: {
@@ -71,7 +88,7 @@ const source = fs.readFileSync(
 );
 vm.runInNewContext(source, {
   chrome: chromeMock,
-  fetch,
+  fetch: fetchMock,
   URL,
   AbortController,
   setTimeout,
@@ -109,6 +126,18 @@ async function main() {
   const taken = await send({ type: "VF_TAKE_PENDING_COMMAND" });
   if (taken.command !== expectedCommand) {
     throw new Error("Pending command could not be consumed");
+  }
+
+  const video = await send({
+    type: "VF_FETCH_VIDEO",
+    url: "https://muse.ai/generated/product-video.mp4",
+  });
+  if (
+    video.type !== "video/mp4" ||
+    Buffer.from(video.data, "base64").toString() !== "mock-video" ||
+    fetchCalls.at(-1) !== "https://muse.ai/generated/product-video.mp4"
+  ) {
+    throw new Error("Background video fetch route returned unexpected data");
   }
 
   let oldApiRejected = false;

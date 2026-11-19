@@ -15,24 +15,26 @@ your own operations platform.
 Last updated: 2026-11-19
 
 <p align="center">
-  <img src="browser-tools/batch-traffic-accelerator/demo-preview.png" alt="Temu batch traffic accelerator demo" width="920">
+  <img src="browser-tools/batch-traffic-accelerator/demo-check.png" alt="Specified specification traffic accelerator preflight" width="360">
+  <img src="browser-tools/batch-traffic-accelerator/demo-queue.png" alt="Persistent task queue" width="360">
 </p>
 
 <p align="center">
-  <sub>Batch Traffic Accelerator: rule-based filtering, margin preview, controlled execution, and result tracking.</sub>
+  <sub>Specified-Spec Traffic Accelerator v0.6.17: product checks, station-price validation, and a persistent task queue.</sub>
 </p>
 
 ## Three-Minute Tour
 
-### 1. Open a real interaction demo
+### 1. Load a current browser extension
 
-```powershell
-git clone https://github.com/leboy77/chatgpt-projects.git
-cd chatgpt-projects
-Start-Process .\browser-tools\batch-traffic-accelerator\demo\preview.html
+Open `chrome://extensions`, enable Developer Mode, and choose “Load unpacked”:
+
+```text
+browser-tools\batch-traffic-accelerator
 ```
 
-No dependencies and no seller account are required for the static demo.
+Open the Temu product list and use the side panel to scan products, configure
+station prices, validate a batch, and run the persistent task queue.
 
 ### 2. Start the Visual Forge local studio
 
@@ -72,23 +74,23 @@ credits.
 
 | Project | What it solves |
 | --- | --- |
-| [Global Price Declaration Checker](temu-operations/price-checker/) | Imports SKCs and country prices, compares platform and declared prices, and supports preview, batching, pause, and retry. |
+| [Global Price Declaration Checker](temu-operations/price-checker/) | Imports SKCs and country prices with RMB/USD exchange rates, query validation, preview, batching, and retry. |
 | [Downlist Assistant Suite](temu-operations/downlist-assistant/) | Delisting, image archiving, ad-spend monitoring, spreadsheet workflows, and a legacy native assistant. |
-| [Auto Recolor Assistant](temu-operations/auto-recolor/) | Adds color variants, fills product and back images, sets SKU attributes, submits jobs, and tracks state. |
+| [Auto Recolor Assistant](temu-operations/auto-recolor/) | Adds color variants, fills product and back images, sets SKU attributes, submits jobs, and tracks state in `0.10.15`. |
 
 ### Collection, Analysis, and Browser Tools
 
 | Project | What it solves |
 | --- | --- |
-| [Temu Product Image Collector](reverse-engineering/temu-image-collector/) | Collects product and carousel images, exports titles, filters recommendation and ad cards, and builds ZIP archives. |
-| [Batch Traffic Accelerator Demo](browser-tools/batch-traffic-accelerator/) | Filters products by traffic, conversion, price, and margin, previews price reductions, and simulates batch execution. |
+| [Temu Product Image Collector](reverse-engineering/temu-image-collector/) | Four collection modes with auto-paging, preview filtering, duplicate detection, and image-link export. |
+| [Specified-Spec Traffic Accelerator](browser-tools/batch-traffic-accelerator/) | Caches SPU/SKC records, imports station prices, validates eligibility, and submits real jobs through a persistent queue. |
 | [Chrome CDP Probe](browser-tools/chrome-cdp-probe/) | Connects to the Chrome DevTools Protocol using only the Python standard library. |
 
 ### Visual and Creative Production
 
 | Project | What it solves |
 | --- | --- |
-| [Visual Forge Studio](creative-tools/visual-forge-studio/) | POD visual-production backend and Muse extension for logo recoloring, product colors, generation, quality checks, and archiving. |
+| [Visual Forge Studio](creative-tools/visual-forge-studio/) | POD backend, Muse `0.13.1` extension, and team dashboard for image/video jobs, recoloring, quality checks, and archiving. |
 | [Warm Sand Background Generator](creative-tools/background-generator/) | Generates reproducible product backgrounds with Python and Pillow. |
 
 ### AI Workflows

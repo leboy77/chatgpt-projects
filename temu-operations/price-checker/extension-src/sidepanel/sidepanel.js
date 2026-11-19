@@ -4,7 +4,13 @@ import {
   shouldImportCountryRow,
 } from "../shared/countries.mjs";
 import { parseSkcRows, splitIdList } from "../shared/skc.mjs";
-import { ComparisonPolicy, toCents } from "../shared/pricing.mjs";
+import {
+  ComparisonPolicy,
+  PriceCurrency,
+  convertCurrencyCentsToRmbCents,
+  convertRmbCentsToCurrencyCents,
+  toCents,
+} from "../shared/pricing.mjs";
 import { parseWorkbookFile } from "../shared/xlsx-reader.mjs";
 
 const COUNTRIES = [
@@ -72,7 +78,7 @@ const COUNTRIES = [
 const STORAGE_KEY = "temuPricingAssistantStateV1";
 const PROFILES_KEY = "temuPricingProfilesV1";
 const HISTORY_KEY = "temuPricingJobHistoryV1";
-const RULE_VERSION = 2;
+const RULE_VERSION = 3;
 const MAX_SKC = 1000;
 const BATCH_SIZE = 50;
 
@@ -88,6 +94,11 @@ const elements = {
   validCount: document.querySelector("#valid-count"),
   batchCount: document.querySelector("#batch-count"),
   duplicateCount: document.querySelector("#duplicate-count"),
+  importedCountryCount: document.querySelector("#imported-country-count"),
+  importedCountryTableWrap: document.querySelector("#imported-country-table-wrap"),
+  importedCountryTableBody: document.querySelector("#imported-country-table-body"),
+  importedCountryEmpty: document.querySelector("#imported-country-empty"),
+  importedPriceHeader: document.querySelector("#imported-price-header"),
   issueList: document.querySelector("#issue-list"),
   countryImportNote: document.querySelector("#country-import-note"),
   countrySection: document.querySelector("#country-section"),
@@ -97,6 +108,10 @@ const elements = {
   selectedCountryCount: document.querySelector("#selected-country-count"),
   toPrice: document.querySelector("#to-price"),
   backToCountries: document.querySelector("#back-to-countries"),
+  inputCurrency: document.querySelector("#input-currency"),
+  fxRateField: document.querySelector("#fx-rate-field"),
+  fxRate: document.querySelector("#fx-rate"),
+  currencyNote: document.querySelector("#currency-note"),
   comparisonPolicy: document.querySelector("#comparison-policy"),
   lowPricePolicy: document.querySelector("#low-price-policy"),
   previewOnly: document.querySelector("#preview-only"),
@@ -106,6 +121,9 @@ const elements = {
   saveProfile: document.querySelector("#save-profile"),
   loadProfile: document.querySelector("#load-profile"),
   deleteProfile: document.querySelector("#delete-profile"),
+  lockCurrentTab: document.querySelector("#lock-current-tab"),
+  unlockTab: document.querySelector("#unlock-tab"),
+  lockedTabStatus: document.querySelector("#locked-tab-status"),
   inspectPage: document.querySelector("#inspect-page"),
   startAutomation: document.querySelector("#start-automation"),
   stopAutomation: document.querySelector("#stop-automation"),
@@ -122,6 +140,9 @@ const elements = {
   submittedCount: document.querySelector("#submitted-count"),
   reviewTableWrap: document.querySelector("#review-table-wrap"),
   reviewTableBody: document.querySelector("#review-table-body"),
+  platformPriceHeader: document.querySelector("#platform-price-header"),
+  targetPriceHeader: document.querySelector("#target-price-header"),
+  submitPriceHeader: document.querySelector("#submit-price-header"),
   jobHistory: document.querySelector("#job-history"),
   retryLastJob: document.querySelector("#retry-last-job"),
 };
@@ -131,10 +152,13 @@ const state = {
   result: null,
   productCode: "",
   selectedCountries: {},
+  inputCurrency: PriceCurrency.RMB,
+  fxRateToRmb: "",
   comparisonPolicy: ComparisonPolicy.GREATER_OR_EQUAL,
   lowPricePolicy: "REPRICE",
   activeBatch: 1,
   automationRunning: false,
+  lockedTab: null,
   latestJob: null,
   history: [],
 };
@@ -198,11 +222,130 @@ function getSelectedCheckboxCountries() {
   );
 }
 
+function currencyConfigValid() {
+  if (state.inputCurrency === PriceCurrency.RMB) {
+    return true;
+  }
+  const rate = Number(state.fxRateToRmb);
+  return state.inputCurrency === PriceCurrency.USD && Number.isFinite(rate) && rate > 0;
+}
+
+function inputAmountFromRmbCents(rmbCents) {
+  if (!Number.isInteger(rmbCents) || rmbCents <= 0) {
+    return "";
+  }
+  if (!currencyConfigValid()) {
+    return "";
+  }
+  const displayCents = convertRmbCentsToCurrencyCents(
+    rmbCents,
+    state.inputCurrency,
+    state.fxRateToRmb,
+  );
+  return (displayCents / 100).toFixed(2);
+}
+
+function rmbCentsFromInputAmount(value) {
+  if (!String(value ?? "").trim()) {
+    return null;
+  }
+  return convertCurrencyCentsToRmbCents(
+    toCents(value),
+    state.inputCurrency,
+    state.fxRateToRmb,
+  );
+}
+
+function rmbCentsFromPriceInput(input) {
+  if (!input) {
+    return null;
+  }
+  const savedRmbCents = Number(input.dataset.rmbCents);
+  if (
+    input.dataset.displayValue === input.value &&
+    Number.isInteger(savedRmbCents) &&
+    savedRmbCents > 0
+  ) {
+    return savedRmbCents;
+  }
+  return rmbCentsFromInputAmount(input.value);
+}
+
+function sourceRmbCents(saved, field) {
+  const centsField = field === "floor" ? "floorRmbCents" : "submitRmbCents";
+  if (Number.isInteger(saved?.[centsField])) {
+    return saved[centsField];
+  }
+  const legacyField = field === "floor" ? "floorRmb" : "submitRmb";
+  if (!String(saved?.[legacyField] ?? "").trim()) {
+    return null;
+  }
+  try {
+    return toCents(saved[legacyField]);
+  } catch {
+    return null;
+  }
+}
+
+function updateCurrencyControls() {
+  elements.inputCurrency.value = state.inputCurrency;
+  elements.fxRate.value = String(state.fxRateToRmb ?? "");
+  elements.fxRateField.hidden = state.inputCurrency !== PriceCurrency.USD;
+  const currency = state.inputCurrency === PriceCurrency.USD ? "USD" : "RMB";
+  elements.platformPriceHeader.textContent = `平台价 ${currency}`;
+  elements.targetPriceHeader.textContent = `申报价 ${currency}`;
+  elements.submitPriceHeader.textContent = `还价目标 ${currency}`;
+  elements.currencyNote.textContent =
+    state.inputCurrency === PriceCurrency.USD
+      ? "Excel 按人民币读取；填写汇率后统一换算为美元显示，提交时再换算回 Temu 的人民币价格。"
+      : "Excel 按人民币读取；人民币模式不需要汇率。";
+  elements.importedPriceHeader.textContent = `显示申报价 ${currency}`;
+  renderImportedCountries();
+}
+
+function renderImportedCountries() {
+  const imported = Object.values(state.selectedCountries)
+    .filter((country) => country?.selected && country.source === "excel")
+    .sort(
+      (left, right) =>
+        COUNTRIES.findIndex((country) => country.code === left.code) -
+        COUNTRIES.findIndex((country) => country.code === right.code),
+    );
+  elements.importedCountryCount.textContent = String(imported.length);
+  elements.importedCountryEmpty.hidden = imported.length > 0;
+  elements.importedCountryTableWrap.hidden = imported.length === 0;
+  elements.importedCountryTableBody.replaceChildren();
+  for (const country of imported) {
+    const floorRmbCents = sourceRmbCents(country, "floor");
+    const submitRmbCents =
+      sourceRmbCents(country, "submit") ?? floorRmbCents;
+    const tr = document.createElement("tr");
+    const values = [
+      `${country.name}（${country.code}）`,
+      Number.isInteger(floorRmbCents)
+        ? (floorRmbCents / 100).toFixed(2)
+        : "",
+      inputAmountFromRmbCents(floorRmbCents) || "待填写汇率",
+      Number.isInteger(submitRmbCents)
+        ? (submitRmbCents / 100).toFixed(2)
+        : "",
+    ];
+    for (const value of values) {
+      const td = document.createElement("td");
+      td.textContent = value;
+      tr.append(td);
+    }
+    elements.importedCountryTableBody.append(tr);
+  }
+}
+
 function renderPriceFields() {
   const selected = getSelectedCheckboxCountries();
   elements.priceList.replaceChildren();
+  const displayCurrency =
+    state.inputCurrency === PriceCurrency.USD ? "USD" : "RMB";
   elements.selectedCountryCount.textContent =
-    `已选择 ${selected.length} 个站点，价格单位为 RMB。`;
+    `已选择 ${selected.length} 个站点，价格单位为 ${displayCurrency}。`;
   elements.toPrice.disabled = selected.length === 0;
 
   for (const country of selected) {
@@ -210,7 +353,7 @@ function renderPriceFields() {
     const row = document.createElement("div");
     row.className = "price-row";
     const label = document.createElement("span");
-    label.textContent = `${country.name} · ${country.hint}`;
+    label.textContent = `${country.name} · ${displayCurrency}`;
     const floorField = document.createElement("label");
     floorField.className = "price-field";
     const floorLabel = document.createElement("span");
@@ -219,10 +362,12 @@ function renderPriceFields() {
     price.className = "country-price";
     price.type = "text";
     price.inputMode = "decimal";
-    price.placeholder = "RMB";
-    price.value = saved.floorRmb || "";
+    price.placeholder = displayCurrency;
+    price.value = inputAmountFromRmbCents(sourceRmbCents(saved, "floor"));
+    price.dataset.rmbCents = String(sourceRmbCents(saved, "floor") ?? "");
+    price.dataset.displayValue = price.value;
     price.dataset.countryPrice = country.code;
-    price.setAttribute("aria-label", `${country.name}申报价 RMB`);
+    price.setAttribute("aria-label", `${country.name}申报价 ${displayCurrency}`);
     floorField.append(floorLabel, price);
 
     const submitField = document.createElement("label");
@@ -234,30 +379,52 @@ function renderPriceFields() {
     submitPrice.type = "text";
     submitPrice.inputMode = "decimal";
     submitPrice.placeholder = "同申报价";
-    submitPrice.value = saved.submitRmb || "";
+    submitPrice.value = inputAmountFromRmbCents(sourceRmbCents(saved, "submit"));
+    submitPrice.dataset.rmbCents = String(
+      sourceRmbCents(saved, "submit") ?? "",
+    );
+    submitPrice.dataset.displayValue = submitPrice.value;
     submitPrice.dataset.countrySubmitPrice = country.code;
-    submitPrice.setAttribute("aria-label", `${country.name}还价目标 RMB`);
+    submitPrice.setAttribute(
+      "aria-label",
+      `${country.name}还价目标 ${displayCurrency}`,
+    );
     submitField.append(submitLabel, submitPrice);
 
     price.addEventListener("input", () => {
+      const floorRmbCents = rmbCentsFromInputAmount(price.value);
+      price.dataset.rmbCents = String(floorRmbCents ?? "");
+      price.dataset.displayValue = price.value;
+      const submitRmbCents = submitPrice.value.trim()
+        ? rmbCentsFromPriceInput(submitPrice)
+        : null;
+      submitPrice.dataset.rmbCents = String(submitRmbCents ?? "");
+      submitPrice.dataset.displayValue = submitPrice.value;
       state.selectedCountries[country.code] = {
         code: country.code,
         name: country.name,
         selected: true,
-        floorRmb: price.value,
-        submitRmb: submitPrice.value,
+        floorRmbCents,
+        submitRmbCents,
         submissionMode: state.selectedCountries[country.code]?.submissionMode,
       };
       updateActionState();
       persistState();
     });
     submitPrice.addEventListener("input", () => {
+      const floorRmbCents = rmbCentsFromPriceInput(price);
+      const submitRmbCents = submitPrice.value.trim()
+        ? rmbCentsFromInputAmount(submitPrice.value)
+        : null;
+      price.dataset.rmbCents = String(floorRmbCents ?? "");
+      submitPrice.dataset.rmbCents = String(submitRmbCents ?? "");
+      submitPrice.dataset.displayValue = submitPrice.value;
       state.selectedCountries[country.code] = {
         code: country.code,
         name: country.name,
         selected: true,
-        floorRmb: price.value,
-        submitRmb: submitPrice.value,
+        floorRmbCents,
+        submitRmbCents,
         submissionMode: state.selectedCountries[country.code]?.submissionMode,
       };
       updateActionState();
@@ -276,15 +443,23 @@ function showCountryImportNote(message, tone = "success") {
 
 function applyCountryPriceRows(countryRows) {
   if (!Array.isArray(countryRows) || !countryRows.length) {
-    showCountryImportNote("");
+    state.selectedCountries = {};
+    renderImportedCountries();
+    updateActionState();
+    persistState();
+    showCountryImportNote("Excel 中没有可识别的国家价格参数。", "error");
     return false;
   }
 
   const enabledRows = countryRows.filter(shouldImportCountryRow);
   if (!enabledRows.length) {
+    state.selectedCountries = {};
+    renderImportedCountries();
+    updateActionState();
+    persistState();
     showCountryImportNote(
-      "国家价格表未启用任何站点，保留当前国家价格设置。",
-      "info",
+      "国家价格表没有填写价格，无法启动核价。",
+      "error",
     );
     return false;
   }
@@ -327,8 +502,11 @@ function applyCountryPriceRows(countryRows) {
         code: country.code,
         name: country.name,
         selected: true,
+        source: "excel",
         floorRmb: (floorRmbCents / 100).toFixed(2),
         submitRmb: (submitPriceRmbCents / 100).toFixed(2),
+        floorRmbCents,
+        submitRmbCents: submitPriceRmbCents,
         submissionMode,
       };
     } catch (error) {
@@ -340,6 +518,10 @@ function applyCountryPriceRows(countryRows) {
     issues.push("同一次导入只能使用一种提交方式");
   }
   if (issues.length) {
+    state.selectedCountries = {};
+    renderImportedCountries();
+    updateActionState();
+    persistState();
     showCountryImportNote(issues.join("；"), "error");
     return false;
   }
@@ -355,6 +537,7 @@ function applyCountryPriceRows(countryRows) {
     state.lowPricePolicy = elements.lowPricePolicy.value;
   }
   renderPriceFields();
+  renderImportedCountries();
   updateActionState();
   persistState();
   const autoEnabled = enabledRows.filter(
@@ -364,7 +547,7 @@ function applyCountryPriceRows(countryRows) {
     (row) => String(row.国家代码 || "").trim().toUpperCase() === "US",
   );
   showCountryImportNote(
-    `已导入 ${Object.keys(selections).length} 个国家价格，全部单位为 RMB。` +
+    `已导入 ${Object.keys(selections).length} 个国家价格，Excel 源单位为 RMB，当前显示 ${state.inputCurrency}。` +
       (autoEnabled.length
         ? `其中 ${autoEnabled.length} 个填写了价格并自动启用。`
         : "") +
@@ -415,6 +598,8 @@ async function saveProfile() {
   profiles[name] = {
     name,
     countries: selected,
+    inputCurrency: state.inputCurrency,
+    fxRateToRmb: state.fxRateToRmb,
     comparisonPolicy: ComparisonPolicy.GREATER_OR_EQUAL,
     lowPricePolicy: elements.lowPricePolicy.value,
     ruleVersion: RULE_VERSION,
@@ -440,6 +625,9 @@ async function loadSelectedProfile() {
   }
 
   state.selectedCountries = { ...profile.countries };
+  state.inputCurrency =
+    profile.inputCurrency === PriceCurrency.USD ? PriceCurrency.USD : PriceCurrency.RMB;
+  state.fxRateToRmb = String(profile.fxRateToRmb ?? "");
   elements.comparisonPolicy.value =
     profile.ruleVersion === RULE_VERSION
       ? profile.comparisonPolicy || ComparisonPolicy.GREATER_OR_EQUAL
@@ -452,6 +640,7 @@ async function loadSelectedProfile() {
   )) {
     checkbox.checked = Boolean(profile.countries[checkbox.dataset.countryCode]);
   }
+  updateCurrencyControls();
   renderPriceFields();
   updateActionState();
   persistState();
@@ -477,29 +666,26 @@ async function deleteSelectedProfile() {
 
 function getSelectedCountries({ validate = false } = {}) {
   const countries = [];
-  for (const checkbox of elements.countryList.querySelectorAll(
-    'input[type="checkbox"][data-country-code]',
-  )) {
-    if (!checkbox.checked) {
+  for (const saved of Object.values(state.selectedCountries)) {
+    if (!saved?.selected || saved.source !== "excel") {
       continue;
     }
-    const country = COUNTRIES.find((item) => item.code === checkbox.dataset.countryCode);
-    const priceInput = elements.priceList.querySelector(
-      `[data-country-price="${country.code}"]`,
-    );
-    const submitPriceInput = elements.priceList.querySelector(
-      `[data-country-submit-price="${country.code}"]`,
-    );
+    const country = COUNTRIES.find((item) => item.code === saved.code);
     try {
-      if (!priceInput) {
-        throw new Error("请先进入价格填写页");
+      if (!country) {
+        throw new Error("不在支持的 59 个站点中");
       }
-      const floorRmbCents = toCents(priceInput.value);
+      if (!currencyConfigValid()) {
+        throw new Error("美元模式必须先填写大于 0 的汇率");
+      }
+      const floorRmbCents = Number.isInteger(saved.floorRmbCents)
+        ? saved.floorRmbCents
+        : toCents(saved.floorRmb);
       if (floorRmbCents <= 0) {
         throw new Error("价格必须大于 0");
       }
-      const submitPriceRmbCents = submitPriceInput?.value.trim()
-        ? toCents(submitPriceInput.value)
+      const submitPriceRmbCents = Number.isInteger(saved.submitRmbCents)
+        ? saved.submitRmbCents
         : floorRmbCents;
       if (submitPriceRmbCents <= 0) {
         throw new Error("提交价格必须大于 0");
@@ -509,17 +695,15 @@ function getSelectedCountries({ validate = false } = {}) {
         siteName: country.name,
         floorRmbCents,
         submitPriceRmbCents,
-        submissionMode:
-          state.selectedCountries[country.code]?.submissionMode ||
-          elements.lowPricePolicy.value,
+        submissionMode: saved.submissionMode || "REPRICE",
       });
     } catch (error) {
       if (validate) {
-        throw new Error(`${country.name}：${error.message}`);
+        throw new Error(`${saved.name || country?.name || saved.code}：${error.message}`);
       }
       countries.push({
-        siteCode: country.code,
-        siteName: country.name,
+        siteCode: saved.code,
+        siteName: saved.name || country?.name || saved.code,
         floorRmbCents: null,
       });
     }
@@ -545,6 +729,89 @@ function renderIssues(issues) {
     elements.issueList.append(item);
   }
   elements.issueList.hidden = false;
+}
+
+function isPricingPageTab(tab) {
+  try {
+    const url = new URL(String(tab?.url || ""));
+    return (
+      url.origin === "https://agentseller.temu.com" &&
+      url.pathname === "/newon/product-select"
+    );
+  } catch {
+    return false;
+  }
+}
+
+function renderTabLock() {
+  if (!state.lockedTab) {
+    elements.lockedTabStatus.textContent =
+      "尚未锁定核价标签页；开始核价时会自动锁定当前 Temu 页面。";
+    elements.lockedTabStatus.dataset.tone = "info";
+    elements.lockCurrentTab.textContent = "锁定当前核价标签页";
+    elements.unlockTab.hidden = true;
+    return;
+  }
+  elements.lockedTabStatus.textContent =
+    `已锁定核价标签页：${state.lockedTab.title || "上新生命周期管理"}。` +
+    "切换到其他 Temu 页面不会改变核价目标。";
+  elements.lockedTabStatus.dataset.tone = "success";
+  elements.lockCurrentTab.textContent = "重新锁定当前标签页";
+  elements.unlockTab.hidden = false;
+}
+
+async function lockCurrentTemuTab({ announce = true } = {}) {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (!tab?.id || !isPricingPageTab(tab)) {
+    throw new Error("请先切换到 /newon/product-select 核价页面再锁定");
+  }
+  state.lockedTab = {
+    id: tab.id,
+    windowId: tab.windowId,
+    url: tab.url,
+    title: tab.title || "上新生命周期管理",
+  };
+  renderTabLock();
+  if (announce) {
+    showStatus(`已锁定核价标签页：${state.lockedTab.title}`, "success");
+  }
+  return tab;
+}
+
+function unlockTemuTab({ announce = true } = {}) {
+  state.lockedTab = null;
+  renderTabLock();
+  if (announce) {
+    showStatus("已解除核价标签页锁定");
+  }
+}
+
+async function getLockedTemuTab({ autoLock = false } = {}) {
+  if (!state.lockedTab) {
+    if (!autoLock) {
+      throw new Error("请先锁定当前核价标签页");
+    }
+    return lockCurrentTemuTab({ announce: false });
+  }
+
+  let tab;
+  try {
+    tab = await chrome.tabs.get(state.lockedTab.id);
+  } catch {
+    unlockTemuTab({ announce: false });
+    throw new Error("已锁定的核价标签页已关闭，请重新锁定");
+  }
+  if (!isPricingPageTab(tab)) {
+    unlockTemuTab({ announce: false });
+    throw new Error("已锁定的标签页已离开核价页面，请重新锁定");
+  }
+  state.lockedTab = {
+    ...state.lockedTab,
+    url: tab.url,
+    title: tab.title || state.lockedTab.title,
+  };
+  renderTabLock();
+  return tab;
 }
 
 function renderBatches() {
@@ -626,24 +893,38 @@ function updateActionState({ announce = true } = {}) {
   const countries = getSelectedCountries();
   const countriesValid =
     countries.length > 0 && countries.every((country) => country.floorRmbCents > 0);
-  const canRun = Boolean(state.result?.ready && countriesValid);
+  const currencyValid = currencyConfigValid();
+  const canRun = Boolean(state.result?.ready && countriesValid && currencyValid);
   elements.inspectPage.disabled = !canRun || state.automationRunning;
   elements.startAutomation.disabled = !canRun || state.automationRunning;
   elements.stopAutomation.hidden = !state.automationRunning;
+  elements.lockCurrentTab.disabled = state.automationRunning;
+  elements.unlockTab.disabled = state.automationRunning;
 
   if (!announce) {
     return;
   }
   if (state.automationRunning) {
-    showStatus("自动核价正在执行，可点击“暂停任务”安全停止", "info");
+    showStatus(
+      `自动核价正在锁定标签页中执行，可切换到其他页面；暂停仍会发送到原核价页`,
+      "info",
+    );
   } else if (!state.result?.rows.length) {
     showStatus("请先导入同一货号下的 SKC", "info");
   } else if (!state.result.ready) {
     showStatus("导入内容存在问题，请修正后再检查页面", "error");
   } else if (!countries.length) {
-    showStatus(`已生成 ${state.result.batches.length} 个批次，请选择核价站点`, "info");
+    showStatus(
+      `已生成 ${state.result.batches.length} 个批次；请导入包含国家价格的 Excel`,
+      "error",
+    );
+  } else if (!currencyValid) {
+    showStatus("美元模式请先填写大于 0 的美元汇率", "error");
   } else if (!countriesValid) {
-    showStatus("请为每个选中站点填写大于 0 的申报价", "error");
+    showStatus(
+      `请为每个选中站点填写大于 0 的申报价（${state.inputCurrency}）`,
+      "error",
+    );
   } else {
     showStatus(
       `已生成 ${state.result.batches.length} 个批次，每批最多 ${BATCH_SIZE} 条`,
@@ -654,6 +935,10 @@ function updateActionState({ announce = true } = {}) {
 
 async function handleFile(file) {
   if (!file) {
+    return;
+  }
+  if (!String(file.name || "").toLowerCase().endsWith(".xlsx")) {
+    showStatus("请导入包含 SKC 导入和国家价格两个工作表的 .xlsx 文件", "error");
     return;
   }
   elements.fileName.textContent = file.name;
@@ -701,14 +986,8 @@ async function inspectTemuPage() {
   elements.inspectPage.disabled = true;
   showStatus("正在检查当前 Temu 页面…");
   try {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (!tab?.id) {
-      throw new Error("没有可用的当前标签页");
-    }
+    const tab = await getLockedTemuTab({ autoLock: true });
     elements.diagnosticUrl.textContent = tab.url || "未知";
-    if (!String(tab.url || "").startsWith("https://agentseller.temu.com/")) {
-      throw new Error("请切换到 agentseller.temu.com 卖家后台");
-    }
 
     const response = await chrome.tabs.sendMessage(tab.id, {
       type: "INSPECT_PAGE",
@@ -754,16 +1033,32 @@ function renderAutomationResults(rows) {
     BLOCKED: "阻断",
     ALREADY_SUBMITTED: "已提交",
   };
+  const displayAmount = (rmbCents) => {
+    if (!Number.isInteger(rmbCents)) {
+      return "";
+    }
+    try {
+      return (
+        convertRmbCentsToCurrencyCents(
+          rmbCents,
+          state.inputCurrency,
+          state.fxRateToRmb,
+        ) / 100
+      ).toFixed(2);
+    } catch {
+      return "";
+    }
+  };
   for (const row of rows.slice(0, 1000)) {
     const tr = document.createElement("tr");
     const values = [
       row.skcId,
       row.siteName,
       row.skuLabel,
-      (row.platformRmbCents / 100).toFixed(2),
-      (row.floorRmbCents / 100).toFixed(2),
+      displayAmount(row.platformRmbCents),
+      displayAmount(row.floorRmbCents),
       Number.isInteger(row.submitPriceRmbCents)
-        ? (row.submitPriceRmbCents / 100).toFixed(2)
+        ? displayAmount(row.submitPriceRmbCents)
         : "",
       labels[row.decision] || row.decision,
     ];
@@ -777,9 +1072,11 @@ function renderAutomationResults(rows) {
 }
 
 async function executeAutomation(payload, { isRetry = false } = {}) {
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (!tab?.id || !String(tab.url || "").startsWith("https://agentseller.temu.com/")) {
-    showStatus("请切换回 Temu 上新生命周期管理页面后开始", "error");
+  let tab;
+  try {
+    tab = await getLockedTemuTab({ autoLock: true });
+  } catch (error) {
+    showStatus(error.message, "error");
     return;
   }
 
@@ -833,6 +1130,8 @@ async function executeAutomation(payload, { isRetry = false } = {}) {
     status,
     code: response?.code || null,
     productCode: payload.productCode,
+    displayCurrency: payload.displayCurrency || PriceCurrency.RMB,
+    fxRateToRmb: payload.fxRateToRmb ?? null,
     skcCount: payload.batches.reduce(
       (sum, batch) => sum + batch.skcIds.length,
       0,
@@ -855,6 +1154,8 @@ async function executeAutomation(payload, { isRetry = false } = {}) {
     temuPricingLastAudit: {
       finishedAt: record.finishedAt,
       productCode: payload.productCode,
+      displayCurrency: record.displayCurrency,
+      fxRateToRmb: record.fxRateToRmb,
       rows,
     },
   });
@@ -913,6 +1214,10 @@ async function startAutomation() {
       ];
   const payload = {
     productCode: state.result.productCode,
+    displayCurrency: state.inputCurrency,
+    fxRateToRmb: currencyConfigValid()
+      ? Number(state.fxRateToRmb)
+      : null,
     policy: elements.comparisonPolicy.value,
     lowPricePolicy: elements.lowPricePolicy.value,
     submit: !elements.previewOnly.checked,
@@ -927,9 +1232,11 @@ async function startAutomation() {
 }
 
 async function stopAutomation() {
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (!tab?.id) {
-    showStatus("没有找到正在运行的 Temu 页面", "error");
+  let tab;
+  try {
+    tab = await getLockedTemuTab();
+  } catch (error) {
+    showStatus(error.message, "error");
     return;
   }
   try {
@@ -983,6 +1290,9 @@ function renderJobHistory() {
     });
     summary.textContent =
       `${time} · ${labels[job.status] || job.status} · ` +
+      `${job.displayCurrency || "RMB"}` +
+      (job.fxRateToRmb ? ` @ ${job.fxRateToRmb}` : "") +
+      ` · ` +
       `${job.skcCount} SKC / 返回 ${job.returnedSkcCount ?? "-"} / ` +
       `无待确认 ${job.noPendingSkcCount ?? "-"} / 提交 ${job.submittedCount} 项`;
     const code = document.createElement("span");
@@ -1032,6 +1342,8 @@ async function persistState() {
     rawRows: state.rawRows,
     productCode: elements.productCode.value,
     selectedCountries: state.selectedCountries,
+    inputCurrency: state.inputCurrency,
+    fxRateToRmb: state.fxRateToRmb,
     comparisonPolicy: elements.comparisonPolicy.value,
     lowPricePolicy: elements.lowPricePolicy.value,
     ruleVersion: RULE_VERSION,
@@ -1057,6 +1369,9 @@ async function restoreState() {
   state.lowPricePolicy = elements.lowPricePolicy.value;
   state.activeBatch = Number(snapshot.activeBatch) || 1;
   state.selectedCountries = snapshot.selectedCountries || {};
+  state.inputCurrency =
+    snapshot.inputCurrency === PriceCurrency.USD ? PriceCurrency.USD : PriceCurrency.RMB;
+  state.fxRateToRmb = String(snapshot.fxRateToRmb ?? "");
 
   for (const [code, saved] of Object.entries(state.selectedCountries)) {
     const checkbox = elements.countryList.querySelector(
@@ -1066,6 +1381,7 @@ async function restoreState() {
       checkbox.checked = Boolean(saved.selected);
     }
   }
+  updateCurrencyControls();
   renderPriceFields();
 
   if (Array.isArray(snapshot.rawRows) && snapshot.rawRows.length) {
@@ -1077,6 +1393,24 @@ elements.downloadTemplate.addEventListener("click", downloadTemplate);
 elements.fileInput.addEventListener("change", () =>
   handleFile(elements.fileInput.files?.[0]),
 );
+elements.inputCurrency.addEventListener("change", () => {
+  state.inputCurrency = elements.inputCurrency.value;
+  updateCurrencyControls();
+  renderPriceFields();
+  updateActionState();
+  persistState();
+});
+elements.fxRate.addEventListener("input", () => {
+  state.fxRateToRmb = elements.fxRate.value.trim();
+  updateActionState();
+  persistState();
+});
+elements.fxRate.addEventListener("change", () => {
+  state.fxRateToRmb = elements.fxRate.value.trim();
+  renderPriceFields();
+  updateActionState();
+  persistState();
+});
 elements.importPasted.addEventListener("click", importPastedIds);
 elements.productCode.addEventListener("change", () => {
   if (state.rawRows.length) {
@@ -1111,10 +1445,35 @@ elements.backToCountries.addEventListener("click", () => {
 elements.saveProfile.addEventListener("click", saveProfile);
 elements.loadProfile.addEventListener("click", loadSelectedProfile);
 elements.deleteProfile.addEventListener("click", deleteSelectedProfile);
+elements.lockCurrentTab.addEventListener("click", async () => {
+  try {
+    await lockCurrentTemuTab();
+  } catch (error) {
+    showStatus(error.message, "error");
+  }
+});
+elements.unlockTab.addEventListener("click", () => unlockTemuTab());
 elements.inspectPage.addEventListener("click", inspectTemuPage);
 elements.startAutomation.addEventListener("click", startAutomation);
 elements.stopAutomation.addEventListener("click", stopAutomation);
 elements.retryLastJob.addEventListener("click", retryLastJob);
+
+chrome.tabs.onRemoved.addListener((tabId) => {
+  if (state.lockedTab?.id === tabId) {
+    unlockTemuTab({ announce: false });
+    showStatus("已锁定的核价标签页已关闭，请重新锁定", "error");
+  }
+});
+
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  if (state.lockedTab?.id !== tabId || !changeInfo.url) {
+    return;
+  }
+  if (!isPricingPageTab(tab)) {
+    unlockTemuTab({ announce: false });
+    showStatus("已锁定的标签页已离开核价页面，请重新锁定", "error");
+  }
+});
 
 chrome.runtime.onMessage.addListener((message) => {
   if (message?.type !== "TEMU_AUTOMATION_PROGRESS") {
@@ -1131,6 +1490,8 @@ chrome.runtime.onMessage.addListener((message) => {
   showStatus(message.message || "自动核价执行中…");
 });
 
+updateCurrencyControls();
+renderTabLock();
 renderCountries();
 renderProfiles().catch((error) =>
   showStatus(`读取核价方案失败：${error.message}`, "error"),

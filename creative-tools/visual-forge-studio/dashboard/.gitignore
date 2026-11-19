@@ -1,0 +1,5 @@
+data/
+data-test/
+.edge-capture/
+__pycache__/
+*.pyc

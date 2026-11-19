@@ -12,7 +12,7 @@
         <p class="eyebrow">Temu Agent Center</p>
         <h1>全球价格申报核价</h1>
       </div>
-      <span class="version">开发版 0.6.1</span>
+      <span class="version">开发版 0.8.0</span>
     </header>
 
     <main>
@@ -25,7 +25,7 @@
           <span class="step-number">1</span>
           <div>
             <h2 id="import-title">导入 SKC</h2>
-            <p>同一文件只填一个货号，最多 1000 条。</p>
+            <p>导入双工作表 Excel；SKC、国家和价格只从此文件读取。</p>
           </div>
         </div>
 
@@ -34,9 +34,9 @@
         </button>
 
         <label class="file-picker" for="file-input">
-          <strong>选择 Excel / CSV 文件</strong>
-          <span id="file-name">支持 .xlsx、.csv</span>
-          <input id="file-input" type="file" accept=".xlsx,.csv,text/csv">
+          <strong>选择核价 Excel 文件</strong>
+          <span id="file-name">支持包含 SKC 导入和国家价格两个工作表的 .xlsx</span>
+          <input id="file-input" type="file" accept=".xlsx">
         </label>
 
         <label class="field">
@@ -44,7 +44,7 @@
           <input id="product-code" type="text" placeholder="例如 Y2-18">
         </label>
 
-        <details class="paste-panel">
+        <details class="paste-panel" hidden>
           <summary>也可以直接粘贴 SKC ID</summary>
           <label class="field">
             <span>SKC ID（逗号、空格或换行分隔）</span>
@@ -59,13 +59,78 @@
           <div><span>有效 SKC</span><strong id="valid-count">0</strong></div>
           <div><span>查询批次</span><strong id="batch-count">0</strong></div>
           <div><span>重复</span><strong id="duplicate-count">0</strong></div>
+          <div><span>启用国家</span><strong id="imported-country-count">0</strong></div>
         </div>
 
         <ul class="issue-list" id="issue-list" hidden></ul>
         <div class="import-note" id="country-import-note" hidden></div>
       </section>
 
-      <section class="panel" id="country-section" aria-labelledby="country-title">
+      <section class="panel" id="excel-parameter-section" aria-labelledby="excel-parameter-title">
+        <div class="panel-heading">
+          <span class="step-number">2</span>
+          <div>
+            <h2 id="excel-parameter-title">确认 Excel 核价参数</h2>
+            <p>国家和价格以 Excel 为唯一数据源。此处只读展示，不重复填写。</p>
+          </div>
+        </div>
+
+        <div class="table-wrap" id="imported-country-table-wrap" hidden>
+          <table>
+            <thead>
+              <tr>
+                <th>国家</th>
+                <th>申报价 RMB</th>
+                <th id="imported-price-header">显示申报价</th>
+                <th>还价目标 RMB</th>
+              </tr>
+            </thead>
+            <tbody id="imported-country-table-body"></tbody>
+          </table>
+        </div>
+        <div class="empty-state" id="imported-country-empty">
+          导入包含“国家价格”工作表的 Excel 后，这里显示本次启用的国家和金额。
+        </div>
+
+        <label class="field compact">
+          <span>核价币种</span>
+          <select id="input-currency">
+            <option value="RMB">人民币（RMB/CNY）</option>
+            <option value="USD">美元（USD）</option>
+          </select>
+        </label>
+        <label class="field compact" id="fx-rate-field" hidden>
+          <span>美元汇率（1 USD = ? RMB）</span>
+          <input id="fx-rate" type="text" inputmode="decimal" placeholder="例如 7.20">
+        </label>
+        <div class="import-note" id="currency-note">
+          Excel 中填写的人民币价格会自动换算为当前核价币种。
+        </div>
+
+        <label class="field compact">
+          <span>平台价与申报价规则</span>
+          <select id="comparison-policy">
+            <option value="GREATER_OR_EQUAL">大于或等于时直接接受平台价（默认）</option>
+            <option value="STRICT_GREATER">严格大于时直接接受；等于时还价</option>
+          </select>
+        </label>
+        <label class="field compact">
+          <span>平台价低于申报价时</span>
+          <select id="low-price-policy" disabled>
+            <option value="REPRICE">自动还价至目标价</option>
+          </select>
+        </label>
+        <label class="preview-toggle">
+          <input id="preview-only" type="checkbox">
+          <span>仅预览，不提交价格（测试模式）</span>
+        </label>
+        <label class="preview-toggle">
+          <input id="force-reprocess" type="checkbox">
+          <span>强制重新处理已成功项</span>
+        </label>
+      </section>
+
+      <section class="panel" id="country-section" aria-labelledby="country-title" hidden>
         <div class="panel-heading">
           <span class="step-number">2</span>
           <div>
@@ -107,28 +172,6 @@
           <button class="button secondary" id="delete-profile" type="button">删除</button>
         </div>
 
-        <label class="field compact">
-          <span>平台价与申报价规则</span>
-          <select id="comparison-policy">
-            <option value="GREATER_OR_EQUAL">大于或等于时直接接受平台价（默认）</option>
-            <option value="STRICT_GREATER">严格大于时直接接受；等于时还价</option>
-          </select>
-        </label>
-        <label class="field compact">
-          <span>平台价低于申报价时</span>
-          <select id="low-price-policy" disabled>
-            <option value="REPRICE">自动还价至目标价</option>
-          </select>
-        </label>
-        <label class="preview-toggle">
-          <input id="preview-only" type="checkbox">
-          <span>仅预览，不提交价格（测试模式）</span>
-        </label>
-        <label class="preview-toggle">
-          <input id="force-reprocess" type="checkbox">
-          <span>强制重新处理已成功项</span>
-        </label>
-
         <button class="button secondary wide" id="back-to-countries" type="button">
           返回修改国家
         </button>
@@ -136,7 +179,7 @@
 
       <section class="panel" aria-labelledby="page-title">
         <div class="panel-heading">
-          <span class="step-number">4</span>
+          <span class="step-number">3</span>
           <div>
             <h2 id="page-title">页面检查</h2>
             <p>确认当前是已登录的价格申报页面，读取状态但不会提交。</p>
@@ -144,6 +187,12 @@
         </div>
 
         <div class="action-row">
+          <button class="button secondary" id="lock-current-tab" type="button">
+            锁定当前核价标签页
+          </button>
+          <button class="button secondary" id="unlock-tab" type="button" hidden>
+            解除锁定
+          </button>
           <button class="button secondary" id="inspect-page" type="button" disabled>
             检查 Temu 页面
           </button>
@@ -153,6 +202,9 @@
           <button class="button secondary" id="stop-automation" type="button" hidden>
             暂停任务
           </button>
+        </div>
+        <div class="import-note" id="locked-tab-status">
+          尚未锁定核价标签页；开始核价时会自动锁定当前 Temu 页面。
         </div>
 
         <dl class="page-diagnostics" id="page-diagnostics">
@@ -171,7 +223,7 @@
 
       <section class="panel" aria-labelledby="review-title">
         <div class="panel-heading">
-          <span class="step-number">5</span>
+          <span class="step-number">4</span>
           <div>
             <h2 id="review-title">核价预览</h2>
             <p>平台价不低于申报价时直接接受；低于申报价时自动还价后提交。</p>
@@ -193,9 +245,9 @@
                 <th>SKC</th>
                 <th>站点</th>
                 <th>SKU 属性</th>
-                <th>平台价 RMB</th>
-                <th>申报价 RMB</th>
-                <th>还价目标 RMB</th>
+                <th id="platform-price-header">平台价 RMB</th>
+                <th id="target-price-header">申报价 RMB</th>
+                <th id="submit-price-header">还价目标 RMB</th>
                 <th>结果</th>
               </tr>
             </thead>

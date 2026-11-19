@@ -3,7 +3,8 @@
 面向 POD 商品团队的图片生产工作区，包含两个可独立使用的部分：
 
 - `backend/`：Python 本机批量视觉生产服务，支持 Logo 换色、多 Logo 同色、商品裂变、印花套图和本地任务队列。
-- `muse-extension/`：Chromium MV3 扩展，可直接连接 Muse 页面完成任务、精确校色、质检、ZIP 和目录归档。
+- `muse-extension/`：Visual Forge for Muse `0.13.1`，支持图片与视频任务、精确校色、质检、ZIP 和目录归档。
+- `dashboard/`：团队图片汇总看板，支持用户、项目、任务、图片、筛选、下载和统计。
 
 两个部分共享产品和技术基线，运行方式不同：
 
@@ -15,6 +16,7 @@
 
 - 后端打开 `http://127.0.0.1:8765/`。
 - Muse 扩展从浏览器扩展页加载 `muse-extension/`。
+- 团队看板从 `dashboard/` 启动，默认监听 `8766`。
 
 ## 文档
 
@@ -22,6 +24,7 @@
 - [技术设计](docs/技术设计文档.md)
 - [变更记录](docs/CHANGELOG.md)
 - [Muse 功能走查](docs/tuoluo-feature-map.md)
+- [团队看板系统设计](docs/团队看板系统设计.md)
 
 ## 快速验证
 
@@ -41,7 +44,16 @@ node --test .\tests\local-core.test.js `
   .\tests\local-model.test.js `
   .\tests\manifest.test.js `
   .\tests\command-parser.test.js `
+  .\tests\prompt-templates.test.js `
+  .\tests\muse-response.test.js `
   .\tests\zip-builder.test.js
 ```
 
-正式运行前请阅读两部分的 README、模型输入一致性限制和目录授权说明。
+团队看板：
+
+```powershell
+cd dashboard
+python server.py --host 127.0.0.1 --port 8766
+```
+
+正式运行前请阅读各部分 README、模型输入一致性限制和目录授权说明。
