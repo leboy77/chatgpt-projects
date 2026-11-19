@@ -22,22 +22,6 @@ Last updated: 2026-11-19
   <sub>Batch Traffic Accelerator: rule-based filtering, margin preview, controlled execution, and result tracking.</sub>
 </p>
 
-## Why This Repository
-
-Many automation projects stop at screenshots, prompts, or half-finished scripts.
-This repository focuses on whether the workflow can actually run:
-
-- **Complete source**: extensions include manifests, page scripts, side panels,
-  templates, and tests.
-- **Explainable results**: pricing, margins, market metrics, and task states come
-  from deterministic scripts, not model guesses.
-- **Safer defaults**: preview first, validate with a small batch, preserve failures,
-  and never blindly retry an unknown submission.
-- **Portable by design**: dependencies, environment variables, local caches, key
-  boundaries, and new-machine steps are documented.
-- **Bilingual documentation**: Chinese and English project introductions are
-  maintained together.
-
 ## Three-Minute Tour
 
 ### 1. Open a real interaction demo
@@ -144,6 +128,3 @@ USAGE.md               Launch instructions for all projects
 The repository is intended for internal business tooling, workflow validation,
 and engineering reference. Confirm account permissions, platform rules, data
 boundaries, and image or design licensing before production use.
-
-If these tools save you time, a Star helps more people working on cross-border
-e-commerce automation discover the repository.
