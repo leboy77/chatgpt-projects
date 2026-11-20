@@ -11,8 +11,10 @@ It is a set of practical projects with source code, browser extensions, tests,
 launch instructions, and migration notes. You can load the extensions directly,
 run the local web apps, process product data, or borrow the architecture for
 your own operations platform.
+The repository currently contains nine runnable projects and one chat-history
+migration utility.
 
-Last updated: 2026-11-19
+Last updated: 2026-11-20
 
 <p align="center">
   <img src="browser-tools/batch-traffic-accelerator/demo-check.png" alt="Specified specification traffic accelerator preflight" width="360">
@@ -84,6 +86,7 @@ credits.
 | --- | --- |
 | [Temu Product Image Collector](reverse-engineering/temu-image-collector/) | Four collection modes with auto-paging, preview filtering, duplicate detection, and image-link export. |
 | [Specified-Spec Traffic Accelerator](browser-tools/batch-traffic-accelerator/) | Caches SPU/SKC records, imports station prices, validates eligibility, and submits real jobs through a persistent queue. |
+| [Temu Batch Spec Traffic Accelerator](browser-tools/temu-spec-traffic-accelerator/) | Expands an Excel workbook into SKC × site tasks, fills target-color and generic prices, executes batches, and exports final prices. |
 | [Chrome CDP Probe](browser-tools/chrome-cdp-probe/) | Connects to the Chrome DevTools Protocol using only the Python standard library. |
 
 ### Visual and Creative Production

@@ -119,7 +119,7 @@ try {
           dryRun: false
         },
         stations,
-        pairs: [{ spu: "44923598906", skc: "592709466180" }],
+        pairs: [{ spu: "21000000016", skc: "220000000016" }],
         cacheMeta: {
           skuKeyword: "DWRG",
           specName: "Mixed Color2",
@@ -133,7 +133,7 @@ try {
       globalThis.chrome = {
         runtime: {
           id: "smoke-extension",
-          getManifest: () => ({ version: "0.6.17" }),
+          getManifest: () => ({ version: "0.6.19" }),
           onMessage: {
             addListener(listener) {
               runtimeListeners.push(listener);
@@ -200,7 +200,7 @@ try {
               if (globalThis.__forceScanMismatch) {
                 return {
                   ok: true,
-                  pairs: [{ spu: "44923598906", skc: "592709466180" }],
+                  pairs: [{ spu: "21000000016", skc: "220000000016" }],
                   rawCount: 1,
                   total: 2,
                   verified: true
@@ -208,7 +208,7 @@ try {
               }
               return {
                 ok: true,
-                pairs: [{ spu: "44923598906", skc: "592709466180" }],
+                pairs: [{ spu: "21000000016", skc: "220000000016" }],
                 rawCount: 1,
                 total: 1,
                 pageSize: 200,

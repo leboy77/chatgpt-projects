@@ -1,0 +1,48 @@
+{
+  "manifest_version": 3,
+  "name": "Temu 批量指定规格流量加速器",
+  "version": "0.2.2",
+  "description": "按 SKC 和站点批量开启 Temu 流量加速，并填写指定颜色组与通用颜色组的超级流量加权申报价。",
+  "minimum_chrome_version": "120",
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "https://agentseller.temu.com/*",
+    "https://agentseller-eu.temu.com/*",
+    "https://agentseller-us.temu.com/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://agentseller.temu.com/*",
+        "https://agentseller-eu.temu.com/*",
+        "https://agentseller-us.temu.com/*"
+      ],
+      "js": [
+        "content/dom-utils.js",
+        "content/content.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "panel/panel.html",
+        "panel/panel.css",
+        "panel/panel.js",
+        "lib/workbook.js",
+        "lib/task-policy.js",
+        "lib/result-export.js",
+        "vendor/xlsx.full.min.js"
+      ],
+      "matches": [
+        "https://agentseller.temu.com/*",
+        "https://agentseller-eu.temu.com/*",
+        "https://agentseller-us.temu.com/*"
+      ]
+    }
+  ]
+}

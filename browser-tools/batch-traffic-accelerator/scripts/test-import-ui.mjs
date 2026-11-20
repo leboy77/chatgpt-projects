@@ -201,7 +201,7 @@ try {
     [
       "货号,SPU ID,SKC ID,启用(是/否),备注",
       "A2,43693414092,,,SPU 行",
-      "A2,,592709466180,是,SKC 行",
+      "A2,,220000000016,是,SKC 行",
     ].join("\r\n"),
     "utf8",
   );
@@ -232,7 +232,7 @@ try {
     !productIds.source.includes("SPU 1") ||
     !productIds.source.includes("SKC 1") ||
     !productIds.rows[0].includes("43693414092") ||
-    !productIds.rows[1].includes("592709466180")
+    !productIds.rows[1].includes("220000000016")
   ) {
     throw new Error(
       `Unexpected product ID import: ${JSON.stringify(productIds)}`,

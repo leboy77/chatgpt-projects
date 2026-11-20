@@ -11,6 +11,7 @@
 | Visual Forge Muse 扩展 | 浏览器扩展 | `creative-tools/visual-forge-studio/muse-extension/` |
 | Visual Forge 团队看板 | 浏览器网页 | `creative-tools/visual-forge-studio/dashboard/` |
 | 指定规格流量加速 | 浏览器扩展 | `browser-tools/batch-traffic-accelerator/` |
+| Temu 批量指定规格流量加速器 | 浏览器扩展 | `browser-tools/temu-spec-traffic-accelerator/` |
 | 全球价格申报核价助手 | 浏览器扩展 | `temu-operations/price-checker/dist/extension/` |
 | 商品自动复色助手 | 浏览器扩展 | `temu-operations/auto-recolor/extension/` |
 | Temu 下架助手 | 浏览器扩展 | `temu-operations/downlist-assistant/temu-downlist-extension/` |
@@ -132,10 +133,22 @@ browser-tools\batch-traffic-accelerator
 5. 检查商品池、站点、目标规格价格和资格，再加入持久化队列。
 6. 开始队列后查看成功、配置异常、可重试失败和日志。
 
-当前版本 `v0.6.17` 会连接真实 Temu 页面并提交符合条件的流量加速任务。
+当前版本 `v0.6.19` 会连接真实 Temu 页面并提交符合条件的流量加速任务。
 正式执行前应确认店铺、站点、价格和加速时效；“仅检查，不提交”默认关闭。
 
-## 五、Temu 运营扩展
+## 五、Temu 批量指定规格流量加速器
+
+加载目录：
+
+```text
+browser-tools\temu-spec-traffic-accelerator
+```
+
+打开 Temu 商品流量页，点击页面右下角“批量加速器”，选择区域并导入 XLSX
+双表，核对展开后的 SKC × 站点任务后开始执行。结果可导出为总表和按 SKU
+展开的价格明细。
+
+## 六、Temu 运营扩展
 
 ### 全球价格申报核价助手
 
@@ -167,7 +180,7 @@ temu-operations\downlist-assistant\temu-downlist-extension
 
 打开 Temu 商品列表并刷新页面，使用页面中的下架、图片保存和任务面板。正式批量操作前先用少量 SPU 和模板文件验证。
 
-## 六、Temu 商品首图采集器
+## 七、Temu 商品首图采集器
 
 加载目录：
 
@@ -186,7 +199,7 @@ reverse-engineering\temu-image-collector\temu-image-collector
 
 只处理当前已经加载的商品卡片；滚动加载后需要重新选择。
 
-## 七、命令行小工具
+## 八、命令行小工具
 
 ### 暖砂图腾背景生成器
 

@@ -127,7 +127,7 @@ try {
           { code: "FR", name: "法国", station: "法国站", group: "欧盟", region: "eu", enabled: true, targetPrice: 150, otherPrice: null, submitMode: "", note: "" },
           { code: "NL", name: "荷兰", station: "荷兰站", group: "欧盟", region: "eu", enabled: true, targetPrice: 120, otherPrice: 110, submitMode: "", note: "" }
         ],
-        pairs: [{ spu: "44923598906", skc: "592709466180" }],
+        pairs: [{ spu: "21000000016", skc: "220000000016" }],
         logs: []
       }
     })`,
@@ -342,7 +342,7 @@ try {
 
   const value = result.result.value;
   if (
-    value.manifestVersion !== "0.6.17" ||
+    value.manifestVersion !== "0.6.19" ||
     !value.storeBinding.includes("TestStore") ||
     !value.environmentButtons.export ||
     !value.environmentButtons.import ||

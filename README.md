@@ -7,10 +7,11 @@
 这不是一份提示词合集。
 
 这里是一组已经拆到源码、浏览器扩展、测试、运行说明和迁移清单的实用项目。
+当前包含 9 个可运行项目、1 个聊天历史迁移工具。
 你可以直接加载扩展、启动本地网页、处理商品数据，也可以把其中的流程拆走，
 改造成自己的运营系统。
 
-最近更新：2026-11-19
+最近更新：2026-11-20
 
 <p align="center">
   <img src="browser-tools/batch-traffic-accelerator/demo-check.png" alt="Specified specification traffic accelerator preflight" width="360">
@@ -82,6 +83,7 @@ http://127.0.0.1:8765/
 | --- | --- |
 | [Temu 商品首图采集器](reverse-engineering/temu-image-collector/) | 四种采集模式，支持自动翻页、预览筛选、重复过滤和图片链接导出。 |
 | [指定规格流量加速](browser-tools/batch-traffic-accelerator/) | 缓存 SPU/SKC、导入站点价格、预检流量资格，并通过持久化队列提交真实加速任务。 |
+| [Temu 批量指定规格流量加速器](browser-tools/temu-spec-traffic-accelerator/) | Excel 双表按 SKC × 站点展开，填写指定颜色组和通用规格价格，批量执行并导出最终价格。 |
 | [Chrome CDP 页面探针](browser-tools/chrome-cdp-probe/) | 用 Python 标准库连接 Chrome DevTools Protocol，检查页面和网络事件。 |
 
 ### 视觉与创意生产

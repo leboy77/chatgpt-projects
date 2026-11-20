@@ -507,7 +507,7 @@
               priceConfirm.click();
               await waitFor(
                 () => !findPriceModalRoot(),
-                10000,
+                15000,
                 "继续让价确认"
               );
               stage = "提交前价格回读";
@@ -707,7 +707,7 @@
       priceConfirm.click();
       await waitFor(
         () => !findPriceModalRoot(),
-        10000,
+        15000,
         "申报价确认"
       );
       stage = "提交前价格回读";
@@ -1202,7 +1202,7 @@
       const input = row.querySelector("input");
       if (!skc || !sku || !input) continue;
 
-      const refText = normalizeText(cells[3]?.innerText);
+      const refText = normalizeText(row.innerText);
       const refMatch = refText.match(
         /参考申报价格：\s*¥?\s*(\d+(?:\.\d+)?)/
       );
@@ -1216,7 +1216,7 @@
         configuredPrice == null || !Number.isFinite(configuredPrice);
       const price = missingPrice ? null : configuredPrice;
       const overLimit =
-        config.guardReferencePrice &&
+        config.guardReferencePrice !== false &&
         price != null &&
         referencePrice != null &&
         price > referencePrice;

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "指定规格流量加速",
-  "version": "0.6.17",
+  "version": "0.6.19",
   "description": "按 SKU 或类目批量缓存 SPU/SKC，支持指定规格价格和按价格自动匹配流量加速档位。",
   "minimum_chrome_version": "116",
   "icons": {

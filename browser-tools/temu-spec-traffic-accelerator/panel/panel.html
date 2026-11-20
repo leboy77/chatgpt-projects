@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>批量指定规格流量加速器</title>
+    <link rel="stylesheet" href="panel.css" />
+  </head>
+  <body>
+    <main class="app">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">TEMU 流量工具</p>
+          <h1>批量指定规格加速</h1>
+          <p class="subtitle">按 SKC 跑完全部站点，再处理下一个 SKC</p>
+        </div>
+        <span id="connectionBadge" class="badge badge-muted">连接中</span>
+      </header>
+
+      <section class="card controls">
+        <div class="field">
+          <label for="regionSelect">区域</label>
+          <select id="regionSelect">
+            <option value="EU">欧区</option>
+            <option value="US">美国</option>
+            <option value="GLOBAL">全球</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="targetGroupInput">指定规格 / 颜色组</label>
+          <input
+            id="targetGroupInput"
+            type="text"
+            value="Mixed Color2"
+            placeholder="例如 Mixed Color2 或 混合色"
+          />
+        </div>
+
+        <div class="field file-field">
+          <label for="fileInput">Excel 任务文件</label>
+          <input id="fileInput" type="file" accept=".xlsx,.xls" />
+        </div>
+
+        <div class="actions">
+          <button id="startButton" class="button button-primary" type="button" disabled>
+            开始执行
+          </button>
+          <button id="pauseButton" class="button button-secondary" type="button" hidden>
+            暂停
+          </button>
+          <button id="stopButton" class="button button-danger" type="button" hidden>
+            停止
+          </button>
+          <button id="exportButton" class="button button-ghost" type="button" disabled>
+            导出结果
+          </button>
+        </div>
+      </section>
+
+      <section class="card plan-card">
+        <div class="section-heading">
+          <div>
+            <h2>执行计划</h2>
+            <p id="sourceSummary">尚未导入文件</p>
+          </div>
+          <span id="runState" class="badge badge-muted">空闲</span>
+        </div>
+        <div id="stats" class="stats"></div>
+        <div class="progress-block">
+          <div class="progress-copy">
+            <span id="currentGroup">等待任务</span>
+            <span id="progressText">0 / 0 站点</span>
+          </div>
+          <div class="progress-track" aria-hidden="true">
+            <div id="progressBar" class="progress-bar"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card table-card">
+        <div class="section-heading">
+          <h2>任务结果</h2>
+          <span id="taskCount" class="muted">0 条</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>SKC</th>
+                <th>站点</th>
+                <th>Y / X</th>
+                <th>状态</th>
+                <th>说明</th>
+              </tr>
+            </thead>
+            <tbody id="taskRows">
+              <tr>
+                <td colspan="5" class="empty">导入 Excel 后显示任务</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <div id="notice" class="notice" role="status" aria-live="polite"></div>
+      <footer>
+        <span>价格超限整条站点跳过</span>
+        <span>执行开始后不再人工确认</span>
+      </footer>
+    </main>
+
+    <script src="../vendor/xlsx.full.min.js"></script>
+    <script type="module" src="panel.js"></script>
+  </body>
+</html>

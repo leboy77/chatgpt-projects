@@ -99,7 +99,7 @@ try {
     (value.total != null && value.rawCount !== value.total) ||
     !value.pairs.some(
       (pair) =>
-        pair.spu === "44923598906" && pair.skc === "592709466180",
+        pair.spu === "21000000016" && pair.skc === "220000000016",
     )
   ) {
     throw new Error(`Content script scan failed: ${JSON.stringify(value)}`);

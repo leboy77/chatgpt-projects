@@ -182,7 +182,7 @@ try {
       globalThis.chrome = {
         runtime: {
           id: "performance-test",
-          getManifest: () => ({ version: "0.6.17" }),
+          getManifest: () => ({ version: "0.6.19" }),
           onMessage: {
             addListener(listener) {
               runtimeListeners.push(listener);
